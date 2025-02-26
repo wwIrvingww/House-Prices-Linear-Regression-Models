@@ -1,0 +1,24 @@
+---
+title: "Analisis_Exploratorio"
+author: "Irving, Chuy"
+date: "2025-02-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+
+```
+
+## R Markdown
+
+Durante este análisis 
+```{r data}
+data <- read_csv("train.csv")
+```
+
+```{r}
+summary(data)
+```
+
