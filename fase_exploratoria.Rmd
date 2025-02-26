@@ -13,12 +13,30 @@ library(readr)
 
 ## R Markdown
 
-Durante este análisis 
-```{r data}
+En este documento se realiza un breve análisis exploratorio sobre la base de datos provista (`train.csv`).
+```{r load_data, include=FALSE}
 data <- read_csv("train.csv")
 ```
 
-```{r}
+```{r summary, include=FALSE}
 summary(data)
 ```
 
+### Descripción de las variables
+```{r variables_description, echo = FALSE}
+```
+
+```{r remove_na_columns, echo=FALSE}
+# Calcular el porcentaje de NA por columna
+porcentaje_na <- sapply(data, function(x) sum(is.na(x)) / length(x)) * 100
+
+# Identificar columnas con más del 90% de NA
+columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 70])
+print(columnas_a_eliminar)
+# Eliminar las columnas del dataframe
+data <- data[, !names(data) %in% columnas_a_eliminar]
+
+# Ver las columnas restantes del dataframe
+
+
+```
