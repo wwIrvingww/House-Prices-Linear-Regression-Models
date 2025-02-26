@@ -8,10 +8,10 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(readr)
+library(knitr)
+library(kableExtra)
 
 ```
-
-## R Markdown
 
 En este documento se realiza un breve análisis exploratorio sobre la base de datos provista (`train.csv`).
 ```{r load_data, include=FALSE}
@@ -23,20 +23,64 @@ summary(data)
 ```
 
 ### Descripción de las variables
-```{r variables_description, echo = FALSE}
+```{r cuantitative_variables_description, echo=FALSE}
+
+# Definir las variables cuantitativas y sus descripciones en español
+variables_cuantitativas <- data.frame(
+  `Nombre de Variable` = c("LotFrontage", "LotArea", "OverallQual", "OverallCond", 
+                            "YearBuilt", "YearRemodAdd", "MasVnrArea", "BsmtFinSF1", 
+                            "BsmtFinSF2", "BsmtUnfSF", "TotalBsmtSF", "1stFlrSF", 
+                            "2ndFlrSF", "LowQualFinSF", "GrLivArea", "BsmtFullBath", 
+                            "BsmtHalfBath", "FullBath", "HalfBath", "BedroomAbvGr", 
+                            "KitchenAbvGr", "TotRmsAbvGrd", "Fireplaces", "GarageYrBlt", 
+                            "GarageCars", "GarageArea", "WoodDeckSF", "OpenPorchSF", 
+                            "EnclosedPorch", "3SsnPorch", "ScreenPorch", "PoolArea", "MiscVal"),
+  `Descripción` = c("Pies lineales de calle conectada a la propiedad", "Tamaño del lote en pies cuadrados", 
+                    "Califica el material general y el acabado", "Califica la condición general", 
+                    "Fecha de construcción original", "Fecha de remodelación", "Área de revestimiento de mampostería en pies cuadrados", 
+                    "Pies cuadrados terminados tipo 1", "Pies cuadrados terminados tipo 2", 
+                    "Pies cuadrados sin terminar del área del sótano", "Pies cuadrados totales del sótano", 
+                    "Pies cuadrados del primer piso", "Pies cuadrados del segundo piso", 
+                    "Pies cuadrados de acabado de baja calidad", "Área habitable sobre rasante en pies cuadrados", 
+                    "Baños completos en el sótano", "Medios baños en el sótano", 
+                    "Baños completos por encima del rasante", "Medios baños por encima del rasante", 
+                    "Dormitorios por encima del rasante", "Cocinas por encima del rasante", 
+                    "Total de habitaciones por encima del rasante (no incluye baños)", 
+                    "Número de chimeneas", "Año de construcción del garaje", 
+                    "Tamaño del garaje en capacidad de coches", "Tamaño del garaje en pies cuadrados", 
+                    "Área de la cubierta de madera en pies cuadrados", "Área del porche abierto en pies cuadrados", 
+                    "Área del porche cerrado en pies cuadrados", "Porche de tres temporadas en pies cuadrados", 
+                    "Porche de pantalla en pies cuadrados", "Área de la piscina en pies cuadrados", 
+                    "Valor de características misceláneas"),
+  `Tipo de Dato` = c("Flotante", "Entero", "Entero", "Entero", 
+                     "Entero", "Entero", "Flotante", "Entero", 
+                     "Entero", "Entero", "Entero", "Entero", 
+                     "Entero", "Entero", "Entero", "Entero", 
+                     "Entero", "Entero", "Entero", "Entero", 
+                     "Entero", "Entero", "Entero", "Entero", 
+                     "Entero", "Entero", "Entero", "Entero", 
+                     "Entero", "Entero", "Entero", "Entero", "Entero")
+)
+
+# Crear la tabla con kable y aplicar el estilo rayado
+tabla_estilizada <- kable(variables_cuantitativas, format = "html", col.names = c("Variable", "Descripción", "Tipo de Dato"),
+                          caption = "Tabla de Variables Cuantitativas") %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+
+# Imprimir la tabla estilizada
+tabla_estilizada
 ```
 
-```{r remove_na_columns, echo=FALSE}
+```
+
+
+```{r remove_na_columns, include=FALSE}
 # Calcular el porcentaje de NA por columna
 porcentaje_na <- sapply(data, function(x) sum(is.na(x)) / length(x)) * 100
 
 # Identificar columnas con más del 90% de NA
-columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 70])
+columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
 print(columnas_a_eliminar)
 # Eliminar las columnas del dataframe
 data <- data[, !names(data) %in% columnas_a_eliminar]
-
-# Ver las columnas restantes del dataframe
-
-
 ```
