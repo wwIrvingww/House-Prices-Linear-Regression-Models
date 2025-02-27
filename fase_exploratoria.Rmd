@@ -10,6 +10,13 @@ knitr::opts_chunk$set(echo = TRUE)
 library(readr)
 library(knitr)
 library(kableExtra)
+library(ggplot2)
+library(readr)
+
+library(factoextra)  # Para el estadístico de Hopkins y gráficos
+library(cluster) 
+library(dplyr)
+library(hopkins)
 
 ```
 
@@ -22,7 +29,7 @@ data <- read_csv("train.csv")
 summary(data)
 ```
 
-### Descripción de las variables
+### Descripción de las variables numericas
 ```{r cuantitative_variables_description, echo=FALSE}
 
 variables_cuantitativas <- data.frame(
@@ -68,7 +75,77 @@ tabla_estilizada <- kable(variables_cuantitativas, format = "html", col.names = 
 tabla_estilizada
 ```
 
+
+### Descripción de las variables categoricas
+```{r cuantitative_variables_description, echo=FALSE}
+
+# Cargar librerías
+library(knitr)
+library(kableExtra)
+
+# Crear un data frame con las variables categóricas y sus descripciones en español
+categorical_vars <- data.frame(
+  Variable = c("MSSubClass", "MSZoning", "Street", "Alley", "LotShape", "LandContour", 
+               "Utilities", "LotConfig", "LandSlope", "Neighborhood", "Condition1", 
+               "Condition2", "BldgType", "HouseStyle", "RoofStyle", "RoofMatl", 
+               "Exterior1st", "Exterior2nd", "MasVnrType", "ExterQual", "ExterCond", 
+               "Foundation", "BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1", 
+               "BsmtFinType2", "Heating", "HeatingQC", "CentralAir", "Electrical", 
+               "KitchenQual", "Functional", "FireplaceQu", "GarageType", "GarageFinish", 
+               "GarageQual", "GarageCond", "PavedDrive", "PoolQC", "Fence", "MiscFeature", 
+               "SaleType", "SaleCondition"),
+  Descripción = c("Identifica el tipo de vivienda involucrada en la venta.", 
+                  "Identifica la clasificación general de zonificación de la venta.", 
+                  "Tipo de acceso a la propiedad por carretera.", 
+                  "Tipo de acceso a la propiedad por callejón.", 
+                  "Forma general del terreno.", 
+                  "Planitud del terreno.", 
+                  "Tipo de servicios públicos disponibles.", 
+                  "Configuración del terreno.", 
+                  "Pendiente del terreno.", 
+                  "Ubicaciones físicas dentro de los límites de la ciudad de Ames.", 
+                  "Proximidad a varias condiciones.", 
+                  "Proximidad a varias condiciones (si hay más de una presente).", 
+                  "Tipo de vivienda.", 
+                  "Estilo de la vivienda.", 
+                  "Tipo de techo.", 
+                  "Material del techo.", 
+                  "Revestimiento exterior principal de la casa.", 
+                  "Revestimiento exterior secundario de la casa (si hay más de un material).", 
+                  "Tipo de revestimiento de mampostería.", 
+                  "Evalúa la calidad del material en el exterior.", 
+                  "Evalúa la condición actual del material en el exterior.", 
+                  "Tipo de cimentación.", 
+                  "Evalúa la altura del sótano.", 
+                  "Evalúa la condición general del sótano.", 
+                  "Se refiere a paredes a nivel de salida o jardín.", 
+                  "Calificación del área terminada del sótano (área 1).", 
+                  "Calificación del área terminada del sótano (área 2).", 
+                  "Tipo de calefacción.", 
+                  "Calidad y condición de la calefacción.", 
+                  "Aire acondicionado central.", 
+                  "Sistema eléctrico.", 
+                  "Calidad de la cocina.", 
+                  "Funcionalidad de la vivienda.", 
+                  "Calidad de la chimenea.", 
+                  "Ubicación del garaje.", 
+                  "Acabado interior del garaje.", 
+                  "Calidad del garaje.", 
+                  "Condición del garaje.", 
+                  "Pavimentación del acceso.", 
+                  "Calidad de la piscina.", 
+                  "Calidad de la cerca.", 
+                  "Característica miscelánea no cubierta en otras categorías.", 
+                  "Tipo de venta.", 
+                  "Condición de la venta.")
+)
+
+# Mostrar la tabla
+kable(categorical_vars, caption = "Variables Categóricas y sus Descripciones en Español") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 ```
+
+
 
 
 ```{r remove_na_columns, include=FALSE}
@@ -81,3 +158,100 @@ print(columnas_a_eliminar)
 # Eliminar las columnas del dataframe
 data <- data[, !names(data) %in% columnas_a_eliminar]
 ```
+
+
+Ademas de describir las variables numéricas, también nos tomamos la tarea de analizar las variables categóricas y determinar cuales de estás podrían ser relevantes para el precio de la casa. Tomamos como variables importantes el vecindario, calidad de la casa, calidad de la cocina y el tipo de garaje
+
+```{r relevant_categorixal_variables, echo=FALSE}
+ggplot(datos, aes(x = Neighborhood)) +
+  geom_bar(fill = "steelblue") +
+  labs(title = "Frecuencia de Vecindarios",
+       x = "Vecindario",
+       y = "Frecuencia") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# 2. Gráfico de frecuencia para OverallQual (Calidad General)
+ggplot(datos, aes(x = factor(OverallQual))) +
+  geom_bar(fill = "orange") +
+  labs(title = "Frecuencia de Calidad General de la Casa",
+       x = "Calidad General (OverallQual)",
+       y = "Frecuencia")
+
+# 3. Gráfico de frecuencia para KitchenQual (Calidad de la Cocina)
+ggplot(datos, aes(x = KitchenQual)) +
+  geom_bar(fill = "purple") +
+  labs(title = "Frecuencia de Calidad de la Cocina",
+       x = "Calidad de la Cocina (KitchenQual)",
+       y = "Frecuencia")
+
+# 4. Gráfico de frecuencia para GarageType (Tipo de Garaje)
+ggplot(datos, aes(x = GarageType)) +
+  geom_bar(fill = "green") +
+  labs(title = "Frecuencia de Tipos de Garaje",
+       x = "Tipo de Garaje (GarageType)",
+       y = "Frecuencia") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+Algo interesante que podemos ver en estás gráficas es la distribución de las frecuencias. 
+Viendo la calidad general de la casa podemos ver que la mayoría de las casas son "promedio" o "mejor al promedio". Esto lo sabemos porque la calidad de la casa es una escala del 1 al 10:
+
+10	Very Excellent
+9	Excellent
+8	Very Good
+7	Good
+6	Above Average
+5	Average
+4	Below Average
+3	Fair
+2	Poor
+1	Very Poo
+
+Esto se puede ver dentro de la gráfica de la cálidad de la cocina, donde se puede ver que predominan las cocinas Gd y TA (Good u Typocal/Average). Lo que quiere decir que nuestro set de datos tiene varias casas que son buenas o promedio y pocas casas que son malas o muy buenas.
+
+Una vez hecho esto haremos un análisis por grupos (clustering) para poder hacer más insights sobre los datos.  
+
+
+
+```{r hopkins, echo=FALSE}
+# Seleccionar variables numéricas
+variables_numericas <- datos %>%
+  select(SalePrice, OverallQual, GrLivArea, TotalBsmtSF, GarageArea, YearBuilt)
+
+# Eliminar filas con valores faltantes (si las hay)
+variables_numericas <- na.omit(variables_numericas)
+
+# Estandarizar las variables (K-Means es sensible a la escala)
+variables_numericas_escaladas <- scale(variables_numericas)
+
+set.seed(123)
+
+hopkins_stat <- hopkins(variables_numericas_escaladas)
+
+# Mostrar el resultado
+print(paste("Estadístico de Hopkins:", hopkins_stat))
+
+```
+## Gráfico de codo para saber el número de clusters.
+
+```{r codo, echo=FALSE}
+wss=0
+set.seed(123)
+for (i in 1:10) 
+  wss[i] <- sum(kmeans(variables_numericas_escaladas, centers=i)$withinss)
+
+plot(1:10, wss, type="b", xlab="Number of Clusters",  ylab="Within groups sum of squares")
+```
+
+Con este resultaod podemos concluir que se pueden hacer 3 o 4 clusters. Ahora usando K-Means, podemos probar a hacer el agrupamiento. 
+
+```{r kmeans, echo=FALSE}
+k_optimo <- 3 
+
+# Aplicar K-Means
+set.seed(123)
+km <- kmeans(variables_numericas_escaladas, centers = k_optimo, nstart = 25)
+
+# Visualizar los clusters con fviz_cluster
+fviz_cluster(km, data = variables_numericas_escaladas, geom = "point", ellipse.type = "norm")
+```
+
