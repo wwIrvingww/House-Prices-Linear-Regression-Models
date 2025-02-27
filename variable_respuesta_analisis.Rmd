@@ -1,0 +1,34 @@
+---
+title: "analisis_variable_respuesta"
+author: "Irving, Chuy"
+date: "2025-02-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(knitr)
+library(kableExtra)
+
+```
+
+En este documento se realiza un análisis de relaciones con la variable respuesta.
+```{r load_data, include=FALSE}
+data <- read_csv("train.csv")
+```
+
+```{r remove_na_columns, include=FALSE}
+# Calcular el porcentaje de NA por columna
+porcentaje_na <- sapply(data, function(x) sum(is.na(x)) / length(x)) * 100
+
+# Identificar columnas con más del 90% de NA
+columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
+print(columnas_a_eliminar)
+# Eliminar las columnas del dataframe
+data <- data[, !names(data) %in% columnas_a_eliminar]
+```

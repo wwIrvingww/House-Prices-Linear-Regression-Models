@@ -18,14 +18,13 @@ En este documento se realiza un breve análisis exploratorio sobre la base de da
 data <- read_csv("train.csv")
 ```
 
-```{r summary, include=FALSE}
+```{r summary, echo=FALSE}
 summary(data)
 ```
 
 ### Descripción de las variables
 ```{r cuantitative_variables_description, echo=FALSE}
 
-# Definir las variables cuantitativas y sus descripciones en español
 variables_cuantitativas <- data.frame(
   `Nombre de Variable` = c("LotFrontage", "LotArea", "OverallQual", "OverallCond", 
                             "YearBuilt", "YearRemodAdd", "MasVnrArea", "BsmtFinSF1", 
@@ -34,7 +33,7 @@ variables_cuantitativas <- data.frame(
                             "BsmtHalfBath", "FullBath", "HalfBath", "BedroomAbvGr", 
                             "KitchenAbvGr", "TotRmsAbvGrd", "Fireplaces", "GarageYrBlt", 
                             "GarageCars", "GarageArea", "WoodDeckSF", "OpenPorchSF", 
-                            "EnclosedPorch", "3SsnPorch", "ScreenPorch", "PoolArea", "MiscVal"),
+                            "EnclosedPorch", "3SsnPorch", "ScreenPorch", "PoolArea", "MiscVal", "MoSold", "YrSold", "SalePrice"),
   `Descripción` = c("Pies lineales de calle conectada a la propiedad", "Tamaño del lote en pies cuadrados", 
                     "Califica el material general y el acabado", "Califica la condición general", 
                     "Fecha de construcción original", "Fecha de remodelación", "Área de revestimiento de mampostería en pies cuadrados", 
@@ -51,7 +50,7 @@ variables_cuantitativas <- data.frame(
                     "Área de la cubierta de madera en pies cuadrados", "Área del porche abierto en pies cuadrados", 
                     "Área del porche cerrado en pies cuadrados", "Porche de tres temporadas en pies cuadrados", 
                     "Porche de pantalla en pies cuadrados", "Área de la piscina en pies cuadrados", 
-                    "Valor de características misceláneas"),
+                    "Valor de características misceláneas", "Mes de la venta", "Año de la venta", "Precio de la venta"),
   `Tipo de Dato` = c("Flotante", "Entero", "Entero", "Entero", 
                      "Entero", "Entero", "Flotante", "Entero", 
                      "Entero", "Entero", "Entero", "Entero", 
@@ -59,15 +58,13 @@ variables_cuantitativas <- data.frame(
                      "Entero", "Entero", "Entero", "Entero", 
                      "Entero", "Entero", "Entero", "Entero", 
                      "Entero", "Entero", "Entero", "Entero", 
-                     "Entero", "Entero", "Entero", "Entero", "Entero")
+                     "Entero", "Entero", "Entero", "Entero", "Entero", "Entero", "Entero", "Entero")
 )
 
-# Crear la tabla con kable y aplicar el estilo rayado
 tabla_estilizada <- kable(variables_cuantitativas, format = "html", col.names = c("Variable", "Descripción", "Tipo de Dato"),
                           caption = "Tabla de Variables Cuantitativas") %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 
-# Imprimir la tabla estilizada
 tabla_estilizada
 ```
 
