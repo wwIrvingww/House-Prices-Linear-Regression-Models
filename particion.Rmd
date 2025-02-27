@@ -1,0 +1,25 @@
+---
+title: "particion"
+output: html_document
+---
+
+En este documento se realiza la division de informacion para el training y testing. Estaremos utilizando 70% training y 30% de testing, tomando como columna objetivo el precio de una casa. En este caso no tenemos los datos balanceados, pero esto no es un problema ya que realmente nuestro modelo predice el precio de una casa, por lo que no tenemos una clasificación binaria para tener exactamaente la misma cantidad de registros para un caso u otro. Por lo que podemos hacer la muestra y division sin mayores complicaciones.
+
+```{r load_data, include=FALSE}
+datos <- read.csv("train.csv")
+```
+```{r data_split, include=FALSE}
+porcentaje <- 0.7
+
+# semisha
+set.seed(123)
+
+corte <- sample(nrow(datos), nrow(datos) * porcentaje)
+
+
+train <- datos[corte, ]
+test <- datos[-corte, ]
+
+write.csv(train, "train_final.csv", row.names = FALSE)
+write.csv(test, "test_final.csv", row.names = FALSE)
+```
