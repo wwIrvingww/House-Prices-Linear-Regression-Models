@@ -9,12 +9,13 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r libraries, include=FALSE}
 library(readr)
-library(knitr)
 library(kableExtra)
-
+library(ggplot2)
+library(reshape2)
+library(knitr)
+library(tidyr)
 ```
 
 En este documento se realiza un análisis de relaciones con la variable respuesta.
@@ -23,12 +24,77 @@ data <- read_csv("train.csv")
 ```
 
 ```{r remove_na_columns, include=FALSE}
-# Calcular el porcentaje de NA por columna
 porcentaje_na <- sapply(data, function(x) sum(is.na(x)) / length(x)) * 100
 
-# Identificar columnas con más del 90% de NA
 columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
 print(columnas_a_eliminar)
-# Eliminar las columnas del dataframe
+
 data <- data[, !names(data) %in% columnas_a_eliminar]
 ```
+
+## Distribuciones de las variables  
+```{r distributions, echo=FALSE}
+datos_num <- data[sapply(data, is.numeric)]  # Filtrar solo variables numéricas
+
+# Utilizando melt de reshape2
+datos_melted <- melt(datos_num, id.vars = NULL, variable.name = "variable", value.name = "value")
+
+ggplot(datos_melted, aes(value)) + 
+  geom_histogram(bins = 30, fill = "skyblue", color = "black") +
+  facet_wrap(~ variable, scales = "free") +
+  theme_minimal() +
+  labs(x = "Valor", y = "Frecuencia", title = "Distribución de Variables Numéricas")
+
+```
+Al analizar las distribuciones de las variables numéricas en tu conjunto de datos, se observan varias características relevantes. Muchas variables, como LotArea y GrLivArea, presentan un sesgo positivo, lo que indica que la mayoría de los valores se concentran en el extremo inferior del rango, con algunos valores atípicos muy altos. Además, hay variables que, aunque parecen numéricas, son en realidad categóricas, como OverallQual y OverallCond, que representan clasificaciones de calidad. También se identifican variables de tiempo, como YearBuilt, que pueden influir en el valor de la propiedad, y algunas variables muestran baja variabilidad, como PoolArea, sugiriendo que podrían no ser predictores significativos del precio de las casas.
+
+Por otro lado, es importante destacar la presencia de valores atípicos en las distribuciones sesgadas, lo que plantea la necesidad de evaluar si estos datos son errores de entrada o representan casos válidos.
+
+## Coeficientes de correlacion  
+En el análisis de correlaciones, se observa que predominan las correlaciones positivas fuertes, resaltadas en rojo intenso, mientras que las áreas azules profundas indican correlaciones negativas. Asimismo, las áreas blancas o de color muy claro sugieren poca o ninguna correlación entre ciertas variables, lo que implica que podrían aportar información independiente valiosa para modelos predictivos.
+```{r correlations, echo=FALSE}
+vars_numéricas <- names(data[sapply(data, is.numeric) & names(data) != "Id"])
+
+total_vars <- length(vars_numéricas)
+group_size <- ceiling(total_vars / 3)  # Determinar el tamaño de cada grupo, redondeando hacia arriba
+
+group1 <- vars_numéricas[1:group_size]
+group2 <- vars_numéricas[(group_size + 1):(2 * group_size)]
+group3 <- vars_numéricas[((2 * group_size) + 1):total_vars]
+
+create_heatmap <- function(data, vars, title_suffix) {
+  group_data <- data[vars]
+  correlations <- cor(group_data, use = "complete.obs")
+  cor_df <- as.data.frame(correlations)
+  cor_df$Variable <- rownames(cor_df)
+  cor_df_long <- tidyr::pivot_longer(cor_df, cols = -Variable, names_to = "Variable2", values_to = "Correlation")
+  
+  # Gráfico de mapa de calor
+  ggplot(cor_df_long, aes(x = Variable, y = Variable2, fill = Correlation)) +
+    geom_tile(color = "black") +
+    geom_text(aes(label = sprintf("%.2f", Correlation)), color = "white", size = 3) +
+    scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0, limit = c(-1, 1), name = "Correlación") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1), axis.title.x = element_blank(), axis.title.y = element_blank()) +
+    labs(title = paste("Mapa de Calor de Correlación entre Variables Numéricas", title_suffix))
+}
+
+
+plot1 <- create_heatmap(data, group1, "Grupo 1")
+plot2 <- create_heatmap(data, group2, "Grupo 2")
+plot3 <- create_heatmap(data, group3, "Grupo 3")
+
+# Mostrar los gráficos
+plot1
+```
+Dentro del Grupo 1, se destacan las fuertes correlaciones positivas entre variables como TotalBsmtSF (Superficie total del sótano) y 1stFlrSF (Superficie del primer piso), lo cual es esperado debido a su relación con el tamaño del área construida de la casa. Además, OverallQual (Calidad general) muestra correlaciones moderadas a fuertes con variables como YearBuilt (Año de construcción) y TotalBsmtSF, sugiriendo que la calidad general está relacionada tanto con la antigüedad de la propiedad como con sus características de tamaño.
+
+```{r echo=FALSE}
+plot2
+```
+En el Grupo 2, las variables GrLivArea (Área habitable por encima del suelo) y TotRmsAbvGrd (Total de habitaciones por encima del suelo) presentan fuertes correlaciones positivas entre sí y con otras variables como BedroomAbvGr (Dormitorios por encima del suelo), lo que indica que las propiedades más grandes tienden a tener más habitaciones y dormitorios. Además, la correlación entre FullBath (Baños completos) y HalfBath (Medios baños) con GrLivArea resalta que las propiedades más amplias suelen contar con más instalaciones.
+
+```{r echo=FALSE}
+plot3
+```
+Finalmente, en el Grupo 3, variables como WoodDeckSF (Superficie de la terraza de madera) y OpenPorchSF (Superficie del porche abierto) no muestran correlaciones fuertes con muchas otras variables, lo que indica que estas características son relativamente independientes de otras medidas de tamaño o calidad general de la propiedad.
