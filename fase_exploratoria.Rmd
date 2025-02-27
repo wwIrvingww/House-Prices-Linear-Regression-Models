@@ -2,7 +2,9 @@
 title: "Analisis_Exploratorio"
 author: "Irving, Chuy"
 date: "2025-02-26"
-output: html_document
+output: 
+  html_document:
+    encoding: UTF-8
 ---
 
 ```{r setup, include=FALSE}
@@ -13,14 +15,14 @@ library(kableExtra)
 library(ggplot2)
 library(readr)
 
-library(factoextra)  # Para el estadístico de Hopkins y gráficos
+library(factoextra)  # Para el estadistico de Hopkins y graficos
 library(cluster) 
 library(dplyr)
 library(hopkins)
 
 ```
 
-En este documento se realiza un breve análisis exploratorio sobre la base de datos provista (`train.csv`).
+En este documento se realiza un breve analisis exploratorio sobre la base de datos provista (`train.csv`).
 ```{r load_data, include=FALSE}
 data <- read_csv("train.csv")
 ```
@@ -29,7 +31,7 @@ data <- read_csv("train.csv")
 summary(data)
 ```
 
-### Descripción de las variables numericas
+### Descripcion de las variables numericas
 ```{r cuantitative_variables_description, echo=FALSE}
 
 variables_cuantitativas <- data.frame(
@@ -41,23 +43,23 @@ variables_cuantitativas <- data.frame(
                             "KitchenAbvGr", "TotRmsAbvGrd", "Fireplaces", "GarageYrBlt", 
                             "GarageCars", "GarageArea", "WoodDeckSF", "OpenPorchSF", 
                             "EnclosedPorch", "3SsnPorch", "ScreenPorch", "PoolArea", "MiscVal", "MoSold", "YrSold", "SalePrice"),
-  `Descripción` = c("Pies lineales de calle conectada a la propiedad", "Tamaño del lote en pies cuadrados", 
-                    "Califica el material general y el acabado", "Califica la condición general", 
-                    "Fecha de construcción original", "Fecha de remodelación", "Área de revestimiento de mampostería en pies cuadrados", 
+  `Descripcion` = c("Pies lineales de calle conectada a la propiedad", "Tamanio del lote en pies cuadrados", 
+                    "Califica el material general y el acabado", "Califica la condicion general", 
+                    "Fecha de construccion original", "Fecha de remodelacion", "area de revestimiento de mamposteria en pies cuadrados", 
                     "Pies cuadrados terminados tipo 1", "Pies cuadrados terminados tipo 2", 
-                    "Pies cuadrados sin terminar del área del sótano", "Pies cuadrados totales del sótano", 
+                    "Pies cuadrados sin terminar del area del sotano", "Pies cuadrados totales del sotano", 
                     "Pies cuadrados del primer piso", "Pies cuadrados del segundo piso", 
-                    "Pies cuadrados de acabado de baja calidad", "Área habitable sobre rasante en pies cuadrados", 
-                    "Baños completos en el sótano", "Medios baños en el sótano", 
-                    "Baños completos por encima del rasante", "Medios baños por encima del rasante", 
+                    "Pies cuadrados de acabado de baja calidad", "area habitable sobre rasante en pies cuadrados", 
+                    "Banios completos en el sotano", "Medios banios en el sotano", 
+                    "Banios completos por encima del rasante", "Medios banios por encima del rasante", 
                     "Dormitorios por encima del rasante", "Cocinas por encima del rasante", 
-                    "Total de habitaciones por encima del rasante (no incluye baños)", 
-                    "Número de chimeneas", "Año de construcción del garaje", 
-                    "Tamaño del garaje en capacidad de coches", "Tamaño del garaje en pies cuadrados", 
-                    "Área de la cubierta de madera en pies cuadrados", "Área del porche abierto en pies cuadrados", 
-                    "Área del porche cerrado en pies cuadrados", "Porche de tres temporadas en pies cuadrados", 
-                    "Porche de pantalla en pies cuadrados", "Área de la piscina en pies cuadrados", 
-                    "Valor de características misceláneas", "Mes de la venta", "Año de la venta", "Precio de la venta"),
+                    "Total de habitaciones por encima del rasante (no incluye banios)", 
+                    "Numero de chimeneas", "Anio de construccion del garaje", 
+                    "Tamanio del garaje en capacidad de coches", "Tamanio del garaje en pies cuadrados", 
+                    "area de la cubierta de madera en pies cuadrados", "area del porche abierto en pies cuadrados", 
+                    "area del porche cerrado en pies cuadrados", "Porche de tres temporadas en pies cuadrados", 
+                    "Porche de pantalla en pies cuadrados", "area de la piscina en pies cuadrados", 
+                    "Valor de caracteristicas miscelaneas", "Mes de la venta", "Anio de la venta", "Precio de la venta"),
   `Tipo de Dato` = c("Flotante", "Entero", "Entero", "Entero", 
                      "Entero", "Entero", "Flotante", "Entero", 
                      "Entero", "Entero", "Entero", "Entero", 
@@ -68,7 +70,7 @@ variables_cuantitativas <- data.frame(
                      "Entero", "Entero", "Entero", "Entero", "Entero", "Entero", "Entero", "Entero")
 )
 
-tabla_estilizada <- kable(variables_cuantitativas, format = "html", col.names = c("Variable", "Descripción", "Tipo de Dato"),
+tabla_estilizada <- kable(variables_cuantitativas, format = "html", col.names = c("Variable", "Descripcion", "Tipo de Dato"),
                           caption = "Tabla de Variables Cuantitativas") %>%
   kable_styling(bootstrap_options = c("striped", "hover"))
 
@@ -76,14 +78,14 @@ tabla_estilizada
 ```
 
 
-### Descripción de las variables categoricas
-```{r cuantitative_variables_description, echo=FALSE}
+### Descripcion de las variables categoricas
+```{r cualitative_variables_description, echo=FALSE}
 
-# Cargar librerías
+# Cargar librerias
 library(knitr)
 library(kableExtra)
 
-# Crear un data frame con las variables categóricas y sus descripciones en español
+# Crear un data frame con las variables categoricas y sus descripciones en espaniol
 categorical_vars <- data.frame(
   Variable = c("MSSubClass", "MSZoning", "Street", "Alley", "LotShape", "LandContour", 
                "Utilities", "LotConfig", "LandSlope", "Neighborhood", "Condition1", 
@@ -94,54 +96,54 @@ categorical_vars <- data.frame(
                "KitchenQual", "Functional", "FireplaceQu", "GarageType", "GarageFinish", 
                "GarageQual", "GarageCond", "PavedDrive", "PoolQC", "Fence", "MiscFeature", 
                "SaleType", "SaleCondition"),
-  Descripción = c("Identifica el tipo de vivienda involucrada en la venta.", 
-                  "Identifica la clasificación general de zonificación de la venta.", 
+  Descripcion = c("Identifica el tipo de vivienda involucrada en la venta.", 
+                  "Identifica la clasificacion general de zonificacion de la venta.", 
                   "Tipo de acceso a la propiedad por carretera.", 
-                  "Tipo de acceso a la propiedad por callejón.", 
+                  "Tipo de acceso a la propiedad por callejon.", 
                   "Forma general del terreno.", 
                   "Planitud del terreno.", 
-                  "Tipo de servicios públicos disponibles.", 
-                  "Configuración del terreno.", 
+                  "Tipo de servicios publicos disponibles.", 
+                  "Configuracion del terreno.", 
                   "Pendiente del terreno.", 
-                  "Ubicaciones físicas dentro de los límites de la ciudad de Ames.", 
+                  "Ubicaciones fisicas dentro de los limites de la ciudad de Ames.", 
                   "Proximidad a varias condiciones.", 
-                  "Proximidad a varias condiciones (si hay más de una presente).", 
+                  "Proximidad a varias condiciones (si hay mas de una presente).", 
                   "Tipo de vivienda.", 
                   "Estilo de la vivienda.", 
                   "Tipo de techo.", 
                   "Material del techo.", 
                   "Revestimiento exterior principal de la casa.", 
-                  "Revestimiento exterior secundario de la casa (si hay más de un material).", 
-                  "Tipo de revestimiento de mampostería.", 
-                  "Evalúa la calidad del material en el exterior.", 
-                  "Evalúa la condición actual del material en el exterior.", 
-                  "Tipo de cimentación.", 
-                  "Evalúa la altura del sótano.", 
-                  "Evalúa la condición general del sótano.", 
-                  "Se refiere a paredes a nivel de salida o jardín.", 
-                  "Calificación del área terminada del sótano (área 1).", 
-                  "Calificación del área terminada del sótano (área 2).", 
-                  "Tipo de calefacción.", 
-                  "Calidad y condición de la calefacción.", 
+                  "Revestimiento exterior secundario de la casa (si hay mas de un material).", 
+                  "Tipo de revestimiento de mamposteria.", 
+                  "Evalua la calidad del material en el exterior.", 
+                  "Evalua la condicion actual del material en el exterior.", 
+                  "Tipo de cimentacion.", 
+                  "Evalua la altura del sotano.", 
+                  "Evalua la condicion general del sotano.", 
+                  "Se refiere a paredes a nivel de salida o jardin.", 
+                  "Calificacion del area terminada del sotano (area 1).", 
+                  "Calificacion del area terminada del sotano (area 2).", 
+                  "Tipo de calefaccion.", 
+                  "Calidad y condicion de la calefaccion.", 
                   "Aire acondicionado central.", 
-                  "Sistema eléctrico.", 
+                  "Sistema electrico.", 
                   "Calidad de la cocina.", 
                   "Funcionalidad de la vivienda.", 
                   "Calidad de la chimenea.", 
-                  "Ubicación del garaje.", 
+                  "Ubicacion del garaje.", 
                   "Acabado interior del garaje.", 
                   "Calidad del garaje.", 
-                  "Condición del garaje.", 
-                  "Pavimentación del acceso.", 
+                  "Condicion del garaje.", 
+                  "Pavimentacion del acceso.", 
                   "Calidad de la piscina.", 
                   "Calidad de la cerca.", 
-                  "Característica miscelánea no cubierta en otras categorías.", 
+                  "Caracteristica miscelanea no cubierta en otras categorias.", 
                   "Tipo de venta.", 
-                  "Condición de la venta.")
+                  "Condicion de la venta.")
 )
 
 # Mostrar la tabla
-kable(categorical_vars, caption = "Variables Categóricas y sus Descripciones en Español") %>%
+kable(categorical_vars, caption = "Variables Categoricas y sus Descripciones en Espaniol") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"))
 ```
 
@@ -152,7 +154,7 @@ kable(categorical_vars, caption = "Variables Categóricas y sus Descripciones en
 # Calcular el porcentaje de NA por columna
 porcentaje_na <- sapply(data, function(x) sum(is.na(x)) / length(x)) * 100
 
-# Identificar columnas con más del 90% de NA
+# Identificar columnas con mas del 90% de NA
 columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
 print(columnas_a_eliminar)
 # Eliminar las columnas del dataframe
@@ -160,40 +162,40 @@ data <- data[, !names(data) %in% columnas_a_eliminar]
 ```
 
 
-Ademas de describir las variables numéricas, también nos tomamos la tarea de analizar las variables categóricas y determinar cuales de estás podrían ser relevantes para el precio de la casa. Tomamos como variables importantes el vecindario, calidad de la casa, calidad de la cocina y el tipo de garaje
+Ademas de describir las variables numericas, tambien nos tomamos la tarea de analizar las variables categoricas y determinar cuales de estas podrian ser relevantes para el precio de la casa. Tomamos como variables importantes el vecindario, calidad de la casa, calidad de la cocina y el tipo de garaje
 
 ```{r relevant_categorixal_variables, echo=FALSE}
-ggplot(datos, aes(x = Neighborhood)) +
+ggplot(data, aes(x = Neighborhood)) +
   geom_bar(fill = "steelblue") +
   labs(title = "Frecuencia de Vecindarios",
        x = "Vecindario",
        y = "Frecuencia") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-# 2. Gráfico de frecuencia para OverallQual (Calidad General)
-ggplot(datos, aes(x = factor(OverallQual))) +
+# 2. Grafico de frecuencia para OverallQual (Calidad General)
+ggplot(data, aes(x = factor(OverallQual))) +
   geom_bar(fill = "orange") +
   labs(title = "Frecuencia de Calidad General de la Casa",
        x = "Calidad General (OverallQual)",
        y = "Frecuencia")
 
-# 3. Gráfico de frecuencia para KitchenQual (Calidad de la Cocina)
-ggplot(datos, aes(x = KitchenQual)) +
+# 3. Grafico de frecuencia para KitchenQual (Calidad de la Cocina)
+ggplot(data, aes(x = KitchenQual)) +
   geom_bar(fill = "purple") +
   labs(title = "Frecuencia de Calidad de la Cocina",
        x = "Calidad de la Cocina (KitchenQual)",
        y = "Frecuencia")
 
-# 4. Gráfico de frecuencia para GarageType (Tipo de Garaje)
-ggplot(datos, aes(x = GarageType)) +
+# 4. Grafico de frecuencia para GarageType (Tipo de Garaje)
+ggplot(data, aes(x = GarageType)) +
   geom_bar(fill = "green") +
   labs(title = "Frecuencia de Tipos de Garaje",
        x = "Tipo de Garaje (GarageType)",
        y = "Frecuencia") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
-Algo interesante que podemos ver en estás gráficas es la distribución de las frecuencias. 
-Viendo la calidad general de la casa podemos ver que la mayoría de las casas son "promedio" o "mejor al promedio". Esto lo sabemos porque la calidad de la casa es una escala del 1 al 10:
+Algo interesante que podemos ver en estas graficas es la distribucion de las frecuencias. 
+Viendo la calidad general de la casa podemos ver que la mayoria de las casas son "promedio" o "mejor al promedio". Esto lo sabemos porque la calidad de la casa es una escala del 1 al 10:
 
 10	Very Excellent
 9	Excellent
@@ -206,38 +208,38 @@ Viendo la calidad general de la casa podemos ver que la mayoría de las casas so
 2	Poor
 1	Very Poo
 
-Esto se puede ver dentro de la gráfica de la cálidad de la cocina, donde se puede ver que predominan las cocinas Gd y TA (Good u Typocal/Average). Lo que quiere decir que nuestro set de datos tiene varias casas que son buenas o promedio y pocas casas que son malas o muy buenas.
+Esto se puede ver dentro de la grafica de la calidad de la cocina, donde se puede ver que predominan las cocinas Gd y TA (Good u Typocal/Average). Lo que quiere decir que nuestro set de datos tiene varias casas que son buenas o promedio y pocas casas que son malas o muy buenas.
 
-Una vez hecho esto haremos un análisis por grupos (clustering) para poder hacer más insights sobre los datos.  
+Una vez hecho esto haremos un analisis por grupos (clustering) para poder hacer mas insights sobre los datos.  
 
 
 
 ```{r hopkins, echo=FALSE}
-# Seleccionar variables numéricas
-variables_numericas <- datos %>%
-  select(SalePrice, OverallQual, GrLivArea, TotalBsmtSF, GarageArea, YearBuilt)
+# Seleccionar variables numericas
+variables_numericas <- data %>%
+  select(SalePrice, OverallQual, GrLivArea, TotalBsmtSF, GarageArea, YearBuilt, GarageCars)
 
 # Eliminar filas con valores faltantes (si las hay)
 variables_numericas <- na.omit(variables_numericas)
 
 # Estandarizar las variables (K-Means es sensible a la escala)
-variables_numericas_escaladas <- scale(variables_numericas)
+#variables_numericas <- scale(variables_numericas)
 
 set.seed(123)
 
-hopkins_stat <- hopkins(variables_numericas_escaladas)
+hopkins_stat <- hopkins(variables_numericas)
 
 # Mostrar el resultado
-print(paste("Estadístico de Hopkins:", hopkins_stat))
+print(paste("Estadistico de Hopkins:", hopkins_stat))
 
 ```
-## Gráfico de codo para saber el número de clusters.
+## Grafico de codo para saber el numero de clusters.
 
 ```{r codo, echo=FALSE}
 wss=0
 set.seed(123)
 for (i in 1:10) 
-  wss[i] <- sum(kmeans(variables_numericas_escaladas, centers=i)$withinss)
+  wss[i] <- sum(kmeans(variables_numericas, centers=i)$withinss)
 
 plot(1:10, wss, type="b", xlab="Number of Clusters",  ylab="Within groups sum of squares")
 ```
@@ -249,9 +251,100 @@ k_optimo <- 3
 
 # Aplicar K-Means
 set.seed(123)
-km <- kmeans(variables_numericas_escaladas, centers = k_optimo, nstart = 25)
+km <- kmeans(variables_numericas, centers = k_optimo, iter.max =100)
 
 # Visualizar los clusters con fviz_cluster
-fviz_cluster(km, data = variables_numericas_escaladas, geom = "point", ellipse.type = "norm")
+fviz_cluster(km, data = variables_numericas, geom = "point", ellipse.type = "norm")
 ```
 
+Evaluando los resultados del clustering con el metodo de silueta se obtiene lo siguiente:
+
+```{r silueta, echo=FALSE}
+
+silkm <- silhouette(km$cluster, dist(variables_numericas))
+silueta_promedio <- mean(silkm[, 3])
+print(paste("Coeficiente de silueta promedio:", silueta_promedio))
+```
+Se ha obtenido un valor mayor a 0.5, por lo que podemos decir que el agrupammiento a sido exitoso. Ahora para terminar el analisis de grupos, es pueden analizar los datos nuevamente pero ahora evaluando de forma grupal por los clusters. Estas son algunas grafiacs que nos ayudaron a determinar el significado de los grupos realizados por el algoritmo de kmeans.
+
+```{r km_result, echo=FALSE}
+# Asignar los clusters a la tabla original
+data$Cluster <- as.factor(km$cluster)
+
+# Ver las primeras filas de la tabla con la nueva columna de clusters
+#head(data)
+
+# Calcular el precio medio por cluster
+precio_medio_por_cluster <- data %>%
+  group_by(Cluster) %>%
+  summarise(Precio_Medio = mean(SalePrice, na.rm = TRUE))
+
+# Mostrar el resultado
+print(precio_medio_por_cluster)
+
+# Graficar el precio medio por cluster
+ggplot(precio_medio_por_cluster, aes(x = Cluster, y = Precio_Medio, fill = Cluster)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Precio Medio de Casas por Cluster",
+       x = "Cluster",
+       y = "Precio Medio (SalePrice)") +
+  theme_minimal()
+
+# Grafico de dispersion: GrLivArea vs SalePrice, coloreado por cluster
+ggplot(data, aes(x = GrLivArea, y = SalePrice, color = Cluster)) +
+  geom_point(alpha = 0.6) +
+  labs(title = "Relacion entre area Habitable y Precio de Venta por Cluster",
+       x = "area Habitable (GrLivArea)",
+       y = "Precio de Venta (SalePrice)",
+       color = "Cluster") +
+  theme_minimal()
+
+# Grafico de barras de GarageType por cluster
+ggplot(data, aes(x = KitchenQual, fill = Cluster)) +
+  geom_bar(position = "dodge") +
+  labs(title = "Distribucion de calidad de cocina por Cluster",
+       x = "Tipo Calidad de la casa",
+       y = "Frecuencia") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+Con estos resultados finalmente podemos concluir que el clustering realizado fue exitosos y las casas fueron separadas principalmente por la calidad. Habiendo claramente 3 grupos, donde se tienen casas de menor precio y menor calidad, casa regulares y casas caras de muy alta calidad. Esto se ve en los graficos realizados. Es mas, el grafico donde la separacion se ve casi perfecta es la relacion entre el area habitable y el precio de la casa. Definitivamente esta sera una variable que crucial que determina el valor de la propiedad. Relacionandolo con las variables ctegoricas tambien se puede ver que esta separacion fue correcta. Las casas del grupo 2 (las casas de menor valoracion), son las que tienen una cocina promedio y luego con las cocinas buenas y excelentes es cuando el cluster 1 (casas de precio intermedia) y el cluster 3 comienzan a tener mayor presencia, ya que son casas que tienen mejor calidad en general, incluyendo la cocina. Y con la grafica que se muestra a continuacion se confirma lo afirmado previamente.
+
+```{r km_result2, echo=FALSE}
+# calidad promedio por cluster
+data_summary <- data %>%
+  group_by(Cluster) %>%
+  summarise(AverageOverallQual = mean(OverallQual, na.rm = TRUE))
+
+# Grafico de barras
+ggplot(data_summary, aes(x = Cluster, y = AverageOverallQual, fill = as.factor(Cluster))) +
+  geom_col() +
+  labs(title = "Promedio de Calidad General (OverallQual) por Cluster",
+       x = "Cluster",
+       y = "Promedio de Calidad General") +
+  theme_minimal()
+
+```
+
+
+En este documento se realiza tambien la division de informacion para el training y testing. Estaremos utilizando 70% training y 30% de testing, tomando como columna objetivo el precio de una casa. En este caso no tenemos los datos balanceados, pero esto no es un problema. Realmente el objetivo principal de nuestro modelo es buscar predecir el precio de una casa, por lo que no tenemos una clasificacion binaria para tener exactamaente la misma cantidad de registros para un caso u otro. Siendo nuestra columna objetivo el precio de la casa, habrian muchos casos de clasificacion. Por lo que podemos hacer la muestra y division sin mayores complicaciones. Usamos 70% -30% ya que es lo que se recomienda generalmente para el entrenamiento de modelos de regresion lineal.
+
+```{r load_data2, include=FALSE}
+datos <- read.csv("train.csv")
+```
+```{r data_split, include=FALSE}
+porcentaje <- 0.7
+
+# semisha
+set.seed(123)
+
+corte <- sample(nrow(datos), nrow(datos) * porcentaje)
+
+
+train <- datos[corte, ]
+test <- datos[-corte, ]
+
+write.csv(train, "train_final.csv", row.names = FALSE)
+write.csv(test, "test_final.csv", row.names = FALSE)
+```
