@@ -16,11 +16,12 @@ library(ggplot2)
 library(reshape2)
 library(knitr)
 library(tidyr)
+library(dplyr)
 ```
 
 En este documento se realiza un análisis de relaciones con la variable respuesta.
 ```{r load_data, include=FALSE}
-data <- read_csv("train.csv")
+data <- read_csv("train_final.csv")
 ```
 
 ```{r remove_na_columns, include=FALSE}
@@ -98,3 +99,100 @@ En el Grupo 2, las variables GrLivArea (Área habitable por encima del suelo) y 
 plot3
 ```
 Finalmente, en el Grupo 3, variables como WoodDeckSF (Superficie de la terraza de madera) y OpenPorchSF (Superficie del porche abierto) no muestran correlaciones fuertes con muchas otras variables, lo que indica que estas características son relativamente independientes de otras medidas de tamaño o calidad general de la propiedad.
+
+## Matriz de correlacion
+```{r corraltion_values, echo=FALSE}
+
+# Supongamos que 'data' es tu dataframe
+# Excluir la columna 'Id' y seleccionar solo las variables numéricas
+vars_numéricas <- setdiff(names(data)[sapply(data, is.numeric)], "Id")
+
+# Seleccionar solo SalePrice y las variables numéricas
+data_filtrada <- data %>% select(SalePrice, all_of(vars_numéricas))
+
+# Calcular la matriz de correlación (usando "complete.obs" para omitir NA)
+correlaciones <- cor(data_filtrada, use = "complete.obs")
+
+# Extraer la fila de SalePrice y convertirla en un dataframe
+correlacion_saleprice <- as.data.frame(correlaciones["SalePrice", ], stringsAsFactors = FALSE)
+
+# Convertir nombres de filas en una columna del dataframe
+correlacion_saleprice$Variable <- row.names(correlacion_saleprice)
+
+# Asegurarse de que los nombres de las filas no son necesarios como índice
+row.names(correlacion_saleprice) <- NULL
+
+# Renombrar la columna de correlación para mayor claridad
+colnames(correlacion_saleprice)[1] <- "Correlacion"
+
+# Ordenar por valor absoluto de la correlación para resaltar las más fuertes
+correlacion_saleprice <- correlacion_saleprice %>%
+  arrange(desc(abs(Correlacion)))
+
+# Usar kable para dar estilo a la tabla
+kable(correlacion_saleprice, caption = "Correlación de variables con SalePrice", align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+```
+Las variables con mayor correlación con `SalePrice` son `OverallQual` **(0.795)**, ``GrLivArea`` **(0.692)**, `GarageCars` **(0.646)** y `TotalBsmtSF` **(0.620)**. Estas indican que la calidad general de la vivienda, el área habitable, el tamaño del garaje y el área del sótano son los factores más influyentes en el precio. Otras variables como `FullBath`, `TotRmsAbvGrd` y `YearBuilt` también muestran correlaciones significativas, sugiriendo que características como el número de baños completos, habitaciones y la antigüedad de la vivienda son relevantes. Estas variables deberían ser prioritarias al construir el modelo de regresión lineal.
+
+Por otro lado, variables como `Fireplaces`, `MasVnrArea` y `LotArea` tienen correlaciones moderadas (entre 0.3 y 0.5), lo que indica que, aunque aportan información, su impacto en el precio es menor. Características como `PoolArea`, `KitchenAbvGr` y `OverallCond` muestran correlaciones débiles o negativas, lo que sugiere que tienen poca influencia o, en algunos casos, podrían reducir el valor de la vivienda. Estas variables podrían omitirse para simplificar el modelo sin perder precisión.
+
+
+
+### Prueba de hipotesis  
+```{r hipotesys_test, echo=FALSE}
+# Cargar librerías necesarias
+if (!require(ggplot2)) install.packages("ggplot2")
+if (!require(kableExtra)) install.packages("kableExtra")
+library(ggplot2)
+library(kableExtra)
+
+# Excluir la columna 'Id' y seleccionar solo las variables numéricas
+vars_numericas <- setdiff(names(data)[sapply(data, is.numeric)], "Id")
+
+# Calcular p-values y filtrar variables significativas
+p_values <- sapply(vars_numericas, function(var) {
+  cor_test <- cor.test(data[[var]], data$SalePrice)
+  return(cor_test$p.value)
+})
+vars_significativas <- vars_numericas[p_values < 0.05]
+
+# Calcular correlaciones y filtrar variables con correlación fuerte
+correlaciones <- cor(data[, vars_significativas], use = "complete.obs")
+correlacion_saleprice <- correlaciones["SalePrice", ]
+vars_fuertes <- names(which(abs(correlacion_saleprice) > 0.3))
+
+# Crear un dataframe con las correlaciones y p-values
+resultados_df <- data.frame(
+  Variable = vars_fuertes,
+  Correlacion = correlacion_saleprice[vars_fuertes],
+  P_Value = p_values[vars_fuertes]
+)
+
+# Ordenar por correlación absoluta
+resultados_df <- resultados_df[order(-abs(resultados_df$Correlacion)), ]
+
+# Mostrar la tabla con kableExtra
+kable(resultados_df, caption = "Variables más importantes y su significancia", align = "c") %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
+
+# Crear el gráfico de barras
+ggplot(resultados_df, aes(x = reorder(Variable, Correlacion), y = Correlacion, fill = Correlacion)) +
+  geom_bar(stat = "identity") +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  coord_flip() +
+  theme_minimal() +
+  labs(
+    title = "Correlación de variables con SalePrice",
+    x = "Variables",
+    y = "Correlación",
+    fill = "Correlación"
+  ) +
+  theme(axis.text.y = element_text(size = 10))
+```
+
+El análisis identificó 19 variables numéricas que tienen una correlación significativa y fuerte con el precio de las casas (SalePrice). Estas variables, como `OverallQual`, `GrLivArea`, `TotalBsmtSF` y `GarageCars`, están estadísticamente relacionadas con el precio y tienen un impacto considerable. Esto las convierte en candidatas ideales para incluirlas en un modelo predictivo.
+
+Por otro lado, variables como `MSSubClass`, `OverallCond` y `PoolArea` no cumplieron con los criterios de significancia o fuerza de correlación, por lo que podrían excluirse del modelo. Este filtrado ayuda a simplificar el análisis y mejorar la eficiencia del modelo al centrarse en las variables más relevantes.
+
