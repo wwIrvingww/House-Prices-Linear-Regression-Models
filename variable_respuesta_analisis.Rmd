@@ -196,3 +196,63 @@ El análisis identificó 19 variables numéricas que tienen una correlación sig
 
 Por otro lado, variables como `MSSubClass`, `OverallCond` y `PoolArea` no cumplieron con los criterios de significancia o fuerza de correlación, por lo que podrían excluirse del modelo. Este filtrado ayuda a simplificar el análisis y mejorar la eficiencia del modelo al centrarse en las variables más relevantes.
 
+
+## Variables Cualitativas
+```{r}
+# Cargar librerías necesarias
+if (!require(dplyr)) install.packages("dplyr")
+library(dplyr)
+if (!require(knitr)) install.packages("knitr")
+library(knitr)
+if (!require(kableExtra)) install.packages("kableExtra")
+library(kableExtra)
+
+# Lista de variables cualitativas a analizar
+vars_cualitativas <- c("MSSubClass", "MSZoning", "Street", "LotShape", "LandContour", 
+                       "Utilities", "LotConfig", "LandSlope", "Neighborhood", "Condition1", 
+                       "Condition2", "BldgType", "HouseStyle", "RoofStyle", "RoofMatl", 
+                       "Exterior1st", "Exterior2nd", "MasVnrType", "ExterQual", "ExterCond", 
+                       "Foundation", "BsmtQual", "BsmtCond", "BsmtExposure", "BsmtFinType1", 
+                       "BsmtFinType2", "Heating", "HeatingQC", "CentralAir", "Electrical", 
+                       "KitchenQual", "Functional", "FireplaceQu", "GarageType", "GarageFinish", 
+                       "GarageQual", "GarageCond", "PavedDrive", "SaleType", "SaleCondition")
+
+# Función para realizar ANOVA y extraer el tamaño del efecto
+realizar_anova <- function(var) {
+  formula <- as.formula(paste("SalePrice ~", var))
+  anova_result <- aov(formula, data = data)
+  summary_anova <- summary(anova_result)
+  p_value <- summary_anova[[1]]$`Pr(>F)`[1]
+  
+  # Calcular Eta Squared y Omega Squared
+  ssb <- summary_anova[[1]]$`Sum Sq`[1]
+  sst <- sum(anova_result$residuals^2) + ssb
+  df_total <- sum(summary_anova[[1]]$Df)
+  df_error <- summary_anova[[1]]$Df[2]
+  mse <- summary_anova[[1]]$`Mean Sq`[2]
+  
+  eta_squared <- ssb / sst
+  omega_squared <- (ssb - (df_error * mse)) / (sst + mse)
+  
+  return(c(P_Value = p_value, Eta_Squared = eta_squared, Omega_Squared = omega_squared))
+}
+
+# Calcular el valor p, Eta Squared, y Omega Squared para cada variable cualitativa
+results <- lapply(vars_cualitativas, realizar_anova)
+results_df <- do.call(rbind, results)
+colnames(results_df) <- c("P_Value", "Eta_Squared", "Omega_Squared")
+results_df <- cbind(Variable = vars_cualitativas, results_df)
+
+# Crear un dataframe con los resultados
+resultados_anova <- as.data.frame(results_df)
+
+# Filtrar variables significativas (p < 0.05) y mostrar en una tabla
+vars_significativas <- resultados_anova %>%
+  filter(P_Value < 0.05) %>%
+  arrange(desc(Eta_Squared))
+
+# Mostrar las variables significativas usando kable en formato "crowded"
+kable(vars_significativas, format = "html", caption = "Variables Significativas con Efectos de Tamaño") %>%
+  kable_styling("crowded")
+
+```
