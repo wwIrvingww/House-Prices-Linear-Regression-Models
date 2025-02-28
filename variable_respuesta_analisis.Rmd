@@ -85,7 +85,6 @@ plot1 <- create_heatmap(data, group1, "Grupo 1")
 plot2 <- create_heatmap(data, group2, "Grupo 2")
 plot3 <- create_heatmap(data, group3, "Grupo 3")
 
-# Mostrar los gráficos
 plot1
 ```
 Dentro del Grupo 1, se destacan las fuertes correlaciones positivas entre variables como TotalBsmtSF (Superficie total del sótano) y 1stFlrSF (Superficie del primer piso), lo cual es esperado debido a su relación con el tamaño del área construida de la casa. Además, OverallQual (Calidad general) muestra correlaciones moderadas a fuertes con variables como YearBuilt (Año de construcción) y TotalBsmtSF, sugiriendo que la calidad general está relacionada tanto con la antigüedad de la propiedad como con sus características de tamaño.
@@ -102,34 +101,24 @@ Finalmente, en el Grupo 3, variables como WoodDeckSF (Superficie de la terraza d
 
 ## Matriz de correlacion
 ```{r corraltion_values, echo=FALSE}
-
-# Supongamos que 'data' es tu dataframe
-# Excluir la columna 'Id' y seleccionar solo las variables numéricas
 vars_numéricas <- setdiff(names(data)[sapply(data, is.numeric)], "Id")
 
-# Seleccionar solo SalePrice y las variables numéricas
 data_filtrada <- data %>% select(SalePrice, all_of(vars_numéricas))
 
 # Calcular la matriz de correlación (usando "complete.obs" para omitir NA)
 correlaciones <- cor(data_filtrada, use = "complete.obs")
 
-# Extraer la fila de SalePrice y convertirla en un dataframe
 correlacion_saleprice <- as.data.frame(correlaciones["SalePrice", ], stringsAsFactors = FALSE)
 
-# Convertir nombres de filas en una columna del dataframe
 correlacion_saleprice$Variable <- row.names(correlacion_saleprice)
 
-# Asegurarse de que los nombres de las filas no son necesarios como índice
 row.names(correlacion_saleprice) <- NULL
 
-# Renombrar la columna de correlación para mayor claridad
 colnames(correlacion_saleprice)[1] <- "Correlacion"
 
-# Ordenar por valor absoluto de la correlación para resaltar las más fuertes
 correlacion_saleprice <- correlacion_saleprice %>%
   arrange(desc(abs(Correlacion)))
 
-# Usar kable para dar estilo a la tabla
 kable(correlacion_saleprice, caption = "Correlación de variables con SalePrice", align = "c") %>%
   kable_styling(bootstrap_options = c("striped", "hover", "condensed"), full_width = FALSE)
 
@@ -142,11 +131,6 @@ Por otro lado, variables como `Fireplaces`, `MasVnrArea` y `LotArea` tienen corr
 
 ### Prueba de hipotesis  
 ```{r hipotesys_test, echo=FALSE}
-# Cargar librerías necesarias
-if (!require(ggplot2)) install.packages("ggplot2")
-if (!require(kableExtra)) install.packages("kableExtra")
-library(ggplot2)
-library(kableExtra)
 
 # Excluir la columna 'Id' y seleccionar solo las variables numéricas
 vars_numericas <- setdiff(names(data)[sapply(data, is.numeric)], "Id")
@@ -198,16 +182,8 @@ Por otro lado, variables como `MSSubClass`, `OverallCond` y `PoolArea` no cumpli
 
 
 ## Variables Cualitativas
-```{r}
-# Cargar librerías necesarias
-if (!require(dplyr)) install.packages("dplyr")
-library(dplyr)
-if (!require(knitr)) install.packages("knitr")
-library(knitr)
-if (!require(kableExtra)) install.packages("kableExtra")
-library(kableExtra)
+```{r cualitative_analisis, echo=FALSE}
 
-# Lista de variables cualitativas a analizar
 vars_cualitativas <- c("MSSubClass", "MSZoning", "Street", "LotShape", "LandContour", 
                        "Utilities", "LotConfig", "LandSlope", "Neighborhood", "Condition1", 
                        "Condition2", "BldgType", "HouseStyle", "RoofStyle", "RoofMatl", 
@@ -217,7 +193,7 @@ vars_cualitativas <- c("MSSubClass", "MSZoning", "Street", "LotShape", "LandCont
                        "KitchenQual", "Functional", "FireplaceQu", "GarageType", "GarageFinish", 
                        "GarageQual", "GarageCond", "PavedDrive", "SaleType", "SaleCondition")
 
-# Función para realizar ANOVA y extraer el tamaño del efecto
+
 realizar_anova <- function(var) {
   formula <- as.formula(paste("SalePrice ~", var))
   anova_result <- aov(formula, data = data)
@@ -237,22 +213,24 @@ realizar_anova <- function(var) {
   return(c(P_Value = p_value, Eta_Squared = eta_squared, Omega_Squared = omega_squared))
 }
 
-# Calcular el valor p, Eta Squared, y Omega Squared para cada variable cualitativa
 results <- lapply(vars_cualitativas, realizar_anova)
 results_df <- do.call(rbind, results)
 colnames(results_df) <- c("P_Value", "Eta_Squared", "Omega_Squared")
 results_df <- cbind(Variable = vars_cualitativas, results_df)
 
-# Crear un dataframe con los resultados
 resultados_anova <- as.data.frame(results_df)
 
-# Filtrar variables significativas (p < 0.05) y mostrar en una tabla
 vars_significativas <- resultados_anova %>%
   filter(P_Value < 0.05) %>%
   arrange(desc(Eta_Squared))
 
-# Mostrar las variables significativas usando kable en formato "crowded"
+
 kable(vars_significativas, format = "html", caption = "Variables Significativas con Efectos de Tamaño") %>%
-  kable_styling("crowded")
+  kable_styling("striped", full_width = FALSE)
+
 
 ```
+
+Los resultados del análisis de varianza (ANOVA) indican que varias variables cualitativas tienen un efecto significativo sobre el precio de venta de las propiedades (SalePrice), dado que presentan valores p inferiores a 0.05. Las variables como `LotConfig`, `Heating` y `Functional` destacan por sus efectos de tamaño, medidos a través de Eta Squared, lo que sugiere que estas variables explican una proporción notable de la variabilidad en los precios de venta. Esto implica que las decisiones relacionadas con estas características pueden influir considerablemente en el valor de las propiedades.
+
+Sin embargo, la presencia de valores negativos en Omega Squared para algunas variables sugiere que, en ciertos casos, el modelo no está capturando adecuadamente la relación entre las variables cualitativas y el precio de venta. Esto puede indicar que la variabilidad dentro de los grupos es mayor que entre ellos, lo que sugiere que estas variables pueden no ser tan relevantes para predecir el precio de venta como se pensaba inicialmente.

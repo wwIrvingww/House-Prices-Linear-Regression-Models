@@ -1280,6 +1280,119 @@ mejorar la eficiencia del modelo al centrarse en las variables más
 relevantes.</p>
 </div>
 </div>
+<div id="variables-cualitativas" class="section level2">
+<h2>Variables Cualitativas</h2>
+<table class="table table-striped" style="width: auto !important; margin-left: auto; margin-right: auto;">
+<caption>
+Variables Significativas con Efectos de Tamaño
+</caption>
+<thead>
+<tr>
+<th style="text-align:left;">
+Variable
+</th>
+<th style="text-align:left;">
+P_Value
+</th>
+<th style="text-align:left;">
+Eta_Squared
+</th>
+<th style="text-align:left;">
+Omega_Squared
+</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align:left;">
+LotConfig
+</td>
+<td style="text-align:left;">
+0.000245212427197998
+</td>
+<td style="text-align:left;">
+0.0209760764227411
+</td>
+<td style="text-align:left;">
+-0.957125555012565
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Heating
+</td>
+<td style="text-align:left;">
+0.000713485891866415
+</td>
+<td style="text-align:left;">
+0.0207281629661943
+</td>
+<td style="text-align:left;">
+-0.957619762674336
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+Functional
+</td>
+<td style="text-align:left;">
+0.00288747144718382
+</td>
+<td style="text-align:left;">
+0.0193942700673935
+</td>
+<td style="text-align:left;">
+-0.960282802253531
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+BsmtFinType2
+</td>
+<td style="text-align:left;">
+0.0119251537756486
+</td>
+<td style="text-align:left;">
+0.0146755593473539
+</td>
+<td style="text-align:left;">
+-0.969683777138304
+</td>
+</tr>
+<tr>
+<td style="text-align:left;">
+MSSubClass
+</td>
+<td style="text-align:left;">
+0.0175249142403847
+</td>
+<td style="text-align:left;">
+0.00552520597352651
+</td>
+<td style="text-align:left;">
+-0.987985381420279
+</td>
+</tr>
+</tbody>
+</table>
+<p>Los resultados del análisis de varianza (ANOVA) indican que varias
+variables cualitativas tienen un efecto significativo sobre el precio de
+venta de las propiedades (SalePrice), dado que presentan valores p
+inferiores a 0.05. Las variables como <code>LotConfig</code>,
+<code>Heating</code> y <code>Functional</code> destacan por sus efectos
+de tamaño, medidos a través de Eta Squared, lo que sugiere que estas
+variables explican una proporción notable de la variabilidad en los
+precios de venta. Esto implica que las decisiones relacionadas con estas
+características pueden influir considerablemente en el valor de las
+propiedades.</p>
+<p>Sin embargo, la presencia de valores negativos en Omega Squared para
+algunas variables sugiere que, en ciertos casos, el modelo no está
+capturando adecuadamente la relación entre las variables cualitativas y
+el precio de venta. Esto puede indicar que la variabilidad dentro de los
+grupos es mayor que entre ellos, lo que sugiere que estas variables
+pueden no ser tan relevantes para predecir el precio de venta como se
+pensaba inicialmente.</p>
+</div>
 
 
 
