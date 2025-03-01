@@ -1,0 +1,70 @@
+---
+title: "Modelo_simple"
+author: "Irving, Chuy"
+date: "2025-03-01"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, include=FALSE}
+library(readr)
+library(kableExtra)
+library(ggplot2)
+library(reshape2)
+library(knitr)
+library(tidyr)
+library(dplyr)
+```
+
+En este documento se realiza un modelo de regesión simple para predecir el precio de una casa. La variable a utilizar será `OverallQual`, las elección de esta variable se responde con el análisis realizado anteriormente en donde observamos como esta variable es la que más relación tiene con nuestra variable respuesta.
+```{r load_data, include=FALSE}
+data <- read_csv("train_final.csv")
+```
+
+```{r remove_na_columns, include=FALSE}
+porcentaje_na <- sapply(data, function(x) sum(is.na(x)) / length(x)) * 100
+
+columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
+print(columnas_a_eliminar)
+
+data <- data[, !names(data) %in% columnas_a_eliminar]
+```
+
+## Modelo univariable
+```{r univariate_analysis, echo=FALSE}
+# Ajustar el modelo de regresión lineal
+modelo <- lm(SalePrice ~ OverallQual, data = data)
+
+# Ver los resultados del modelo
+summary(modelo)
+
+```
+El valor p extremadamente bajo **<2e-16** indica que el intercepto es estadísticamente significativo.
+Con respecto del coeficiente de `OverllQual` su coeficiente es de **44987**, lo que significa que por cada incremente de una unidad en la calidad general, el precio de venta esperado aumenta en 44,987 unidades monetarias, esto asumiendo que todas las demás condiciones permaenecen constantes. Su coeficiente de <2e-16 indica una fuerte relación lineal entre `OverllQual` y `SalePrice`.  
+Con respecto de los residuos podemos ver que el rango es extremadamente amplio de **-195710 a 399290** lo que puede indicar presencia de valores atípicos o bien una gran variabilidad en los datos que el modelo no está capturando de manera completa.
+La mediana es de -1864 lo que sugiera que la mediana de los residuos está cercana a cero, lo que nos dice que nuestro de modelo de regresión está bien ajustado.  
+El error estándar residual es de **49420**. Esto indica que las predicciones del modelo tiene a estar a ± 49420 unidades del valor real.  
+El Multiple R-squared tiene un valor de 0.61, lo que nos dice que el **61%** de la variabilidad en `SalePrice`  se explica con `OverallQuall`. Es un valor relativamente alto, lo que sugiere que esta variable es una buena predictora de venta.
+El Multiple R-squared es ligeramente menor al cuadrado múltiple, pero todavía bastante alto.  
+
+## Gráfico de dispersión lineal
+```{r univariate_analisis_graphic, echo=FALSE}
+# Gráfico de dispersión con línea de regresión
+ggplot(data, aes(x = OverallQual, y = SalePrice)) +
+  geom_point(aes(color = OverallQual), alpha = 0.6) +  # Puntos semi-transparentes coloreados por OverallQual
+  geom_smooth(method = "lm", se = TRUE, color = "red") +  # Línea de regresión lineal con intervalo de confianza
+  labs(title = "Relación entre Calidad General y Precio de Venta",
+       x = "Calidad General (OverallQual)",
+       y = "Precio de Venta (SalePrice)") +
+  theme_minimal()
+
+
+```
+La línea de regresión muestra una clara tendencia positiva lo que demuestra que a medida que `OverallQual` aumenta `SalePrice` también, esto coincide con lo descrito en los datos cuantitativos en donde el coeficiente era positivo. La distribucuón de los puntos mantinee una dispersión considerable, en especial en los niveles más altos, esto sugiere que existen otros factores que también están involucrados en el valor del precio de venta.  
+En las casas con alta calidad puede apreciarse la presencia de valores atípicos, estos podrían estar influyedndo en la regresión.  
+Para las casas con calidad baja (cerca de 2-5), los precios de venta parecen estar menos dispersos y más agrupados, lo que nos dice que la variabilidad en el precio de venta es mejor en este segmento. Por otro lado, a medida que la calidad general aumenta (a partir de 7), la variabilidad en los precios de venta también parece estar aumenando, podría deberse a que las casas con mayor calidad pueden tener características adicionales que no se describen solo coon una variable.  
+
