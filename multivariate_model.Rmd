@@ -133,19 +133,14 @@ Con estos resultados podemos comprobar que el modelo presenta cierta multicoline
 
 Como podemos ver las relaciones son redundantes. Una casa que tiene bastante espacio en el primer piso, seguramente tenga un sotano grande; si una casa tiene varios cuartos sobre el nivel del suelo, seguramente tenga un gran espacio sobre el nivel del suelo y por último si el Garage es grande seguramente quepan más carros. Y pues también las casas de alta calidad tendrán un precio más alto. Sabiendo esto se puede ajustar el modelo de regresión lineal.
 
-```{r fixxed_model, echo=FALSE}
-# esto ayuda a encontrar mas variables que son combinacion lineal de otras columnas
-alias(multivariable_modelFinal)
-```
-
-Admás también usamos la función Alias para poder encontrar alguna otra que se nos pueda haber escapado. El correr la funcion podemos ver que la variable TotalBsmtSF se relaciona con las columnas BsmtFinSF1, BsmtFinSF2 y BsmtUnfSF. Al final son medidas relacionadas a los pies cuadrados del sotano, es por eso que tambien son redundantes.Mejora dejamos solo el total
+Admás también usamos la función Alias para poder encontrar alguna otra que se nos pueda haber escapado. El correr la funcion podemos ver que la variable TotalBsmtSF se relaciona con las columnas TotalBsmtSF, BsmtFinSF1, BsmtFinSF2 y BsmtUnfSF. Al final son medidas relacionadas a los pies cuadrados del sotano, es por eso que tambien son redundantes.Mejora dejamos solo el total
 
 ```{r fixxed_model2, echo=FALSE}
 # Crear un nuevo conjunto de variables numéricas excluyendo las redundantes
 vars_quantitative3 <- names(data)[sapply(data, is.numeric) & 
                                   names(data) != 'Id' & 
                                   names(data) != 'PredictedSalePrice' &
-                                  !names(data) %in% c("X1stFlrSF", "TotRmsAbvGrd", "GarageCars", "BsmtFinSF2", "BsmtUnfSF", "X2ndFlrSF")]
+                                  !names(data) %in% c("X1stFlrSF", "TotRmsAbvGrd", "GarageCars", "TotalBsmtSF", "X2ndFlrSF")]
 
 # Ajustar el nuevo modelo multivariable
 multivariable_modelFinal <- lm(SalePrice ~ ., data = data[, vars_quantitative3])
@@ -154,7 +149,7 @@ summary(multivariable_modelFinal)
 plot(multivariable_modelFinal)
 ```
 
-```{r check, echo=FALSE}
+```{r check12, echo=FALSE}
 # Verificar variables aliasadas (combinaciones lineales)
 alias(multivariable_modelFinal)
 ```
