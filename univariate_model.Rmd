@@ -18,11 +18,14 @@ library(reshape2)
 library(knitr)
 library(tidyr)
 library(dplyr)
+library(nortest)
+library(caret)
 ```
 
 En este documento se realiza un modelo de regesión simple para predecir el precio de una casa. La variable a utilizar será `OverallQual`, las elección de esta variable se responde con el análisis realizado anteriormente en donde observamos como esta variable es la que más relación tiene con nuestra variable respuesta.
 ```{r load_data, include=FALSE}
 data <- read_csv("train_final.csv")
+test_data3 <- read.csv("test_final.csv")
 ```
 
 ```{r remove_na_columns, include=FALSE}
@@ -39,6 +42,8 @@ data <- data[, !names(data) %in% columnas_a_eliminar]
 modelo <- lm(SalePrice ~ OverallQual, data = data)
 
 summary(modelo)
+
+plot(modelo)
 
 ```
 El valor p extremadamente bajo **<2e-16** indica que el intercepto es estadísticamente significativo.
@@ -65,3 +70,19 @@ La línea de regresión muestra una clara tendencia positiva lo que demuestra qu
 En las casas con alta calidad puede apreciarse la presencia de valores atípicos, estos podrían estar influyedndo en la regresión.  
 Para las casas con calidad baja (cerca de 2-5), los precios de venta parecen estar menos dispersos y más agrupados, lo que nos dice que la variabilidad en el precio de venta es mejor en este segmento. Por otro lado, a medida que la calidad general aumenta (a partir de 7), la variabilidad en los precios de venta también parece estar aumenando, podría deberse a que las casas con mayor calidad pueden tener características adicionales que no se describen solo coon una variable.  
 
+```{r predict_result, echo=FALSE}
+
+predLM<-predict(modelo, newdata = test_data3)
+
+hist(modelo$residuals)
+# para ver si la distribucion de lo residuos es normal
+lillie.test(modelo$residuals)
+
+# muestra la desviacion de las predicciones
+RMSE(predLM,test_data3$SalePrice)
+
+#lo muestra como porcentaje
+rmse_relative <- RMSE(predLM, test_data3$SalePrice, na.rm = TRUE) / mean(test_data3$SalePrice, na.rm = TRUE)
+
+print(rmse_relative)
+```

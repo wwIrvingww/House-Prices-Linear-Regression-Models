@@ -20,6 +20,7 @@ library(dplyr)
 library(corrplot)
 library(car)
 library(caret)
+library(nortest)
 ```
 
 En este documento se realiza un modelo de regesión multivariable para predecir el precio de una casa. Se tomarán en cuenta t
@@ -94,11 +95,29 @@ print(rmse_relative)
 
 ```
 
+
 En la gráfica se muestra a relación entre los precios de venta observados y los precios predichos por el modelo de regresión multivariable. La línea roja representa la línea de regresión ajustada a los puntos de datos, mientras que la línea azul discontinua indica la línea ideal donde los valores predichos coinciden exactamente con los valores observados. La mayoría de los puntos están agrupados cerca de la línea roja lo que sugiere que el modelo tiene un buen ajuste general  aunque existen algunas desviaciones notables especialmente en el rango de precios más alto donde el modelo tiende a subestimar los valores.
 
 A pesar de que la línea de regresión se ajusta bien a los datos en la mayor parte del rango los puntos dispersos lejos de la línea azul especialmente hacia la derecha indican que hay casos en los que las predicciones del modelo difieren significativamente de los valores reales. Esto podría deberse a datos atípicos o factores que no están considerados en el modelo y y que de alguna manera influyen en el precio. 
 
 Ahora bien, los resultados son considerablemente satisfactorios, pero es importante analizar con más detalle la regresión lineal obtenida con todas las variables numericas.Lo que debemos de evaluar es que nuestro resultado no esté siendo afectado por multicolinealidad ni sobreajuste. La multicolinealidad ocurre cuando algunas de las variables están demasiado relacionadas entre si. Esto puede causar problemas y sesgo dentro de los resultados, haciendo que el modelo no pueda predecir correctamente los resultados si se le da un set de datos nuevo para realizar pruebas. Anteriormente se obtuvieron los valores: "Multiple R-squared:  0.7925" y	"Adjusted R-squared:  0.783", nuestro modelo de momento muestra una buena correlacón entre las variables numéricas y el hecho de que ambos valoressean cercanos y no extremadamente altos es un buen comienzo. Entonces ahora es buen momento para evaluar el modelo multivariable y remover variables que puedan estar generando ruido o incluso sobre ajuste dentro del modelo. 
+
+```{r predict_multvar, echo=FALSE}
+
+hist(multivariable_model$residuals)
+# para ver si la distribucion de lo residuos es normal
+lillie.test(multivariable_model$residuals)
+
+# desviacion con valor numerico
+rmse_value <- RMSE(test_data1$PredictedSalePrice, test_data1$SalePrice, na.rm = TRUE)
+rmse_value
+
+# Calcular RMSE relativo, osea porcentaje de desviacion en la prediccion
+rmse_relative <- rmse_value / mean(test_data1$SalePrice, na.rm = TRUE)
+
+print(rmse_relative)
+```
+
 
 ```{r multicolinealidad1, echo=FALSE}
 vars_quantitative2 <- names(data)[sapply(data, is.numeric) & names(data) != 'Id' & names(data) != 'PredictedSalePrice']
@@ -167,6 +186,14 @@ sum(is.na(pred_Multi_LM))
 sum(is.na(test_data$SalePrice))
 
 
+hist(multivariable_modelFinal$residuals)
+# para ver si la distribucion de lo residuos es normal
+lillie.test(multivariable_modelFinal$residuals)
+
+# muestra la desviacion de las predicciones
+RMSE(pred_Multi_LM,test_data$SalePrice, na.rm = TRUE)
+
+# desviacion pero en porcentaje.
 rmse_relative <- RMSE(pred_Multi_LM, test_data$SalePrice, na.rm = TRUE) / mean(test_data$SalePrice, na.rm = TRUE)
 
 print(rmse_relative)
