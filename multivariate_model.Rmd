@@ -17,6 +17,9 @@ library(reshape2)
 library(knitr)
 library(tidyr)
 library(dplyr)
+library(corrplot)
+library(car)
+library(caret)
 ```
 
 En este documento se realiza un modelo de regesión multivariable para predecir el precio de una casa. Se tomarán en cuenta t
@@ -37,9 +40,11 @@ data <- data[, !names(data) %in% columnas_a_eliminar]
 
 vars_quantitative <- names(data)[sapply(data, is.numeric) & names(data) != 'Id']
 
-multivariable_model <- lm(SalePrice ~ ., data = data %>% select(one_of(c(vars_quantitative))))
+multivariable_model <- lm(SalePrice ~ ., data = data[, vars_quantitative])
 
 summary(multivariable_model)
+
+plot(multivariable_model)
 ```
 El rango de los residuos va desde **-386501** hasta **339269**, esto sugiere que existen ocasiones en donde el modelo sobre o subestima significativamente el valor de `SalePrice`, puede deberse a valores atípicos o situaciones en donde el modelo no captura bien la manera de calcular el precio.  
 La mediana es de **-2603**, es aún más pequeña que la del modelo univariable lo que sugiera que se ajusta mejor a los datos en la mediana. Sin embargo, el hecho de que sea negativa, sugiere que existe una tendencia del modelo a sobreestimar el precio de la casa.  
@@ -64,11 +69,14 @@ La variable **`TotRmsAbvGrd`**, el total de habitaciones por encima del nivel de
 ## Gráfico
 ```{r multivarable_analysis_graphic, echo=FALSE}
 vars_quantitative <- names(data)[sapply(data, is.numeric) & names(data) != 'Id']
-multivariable_model <- lm(SalePrice ~ ., data = data %>% select(one_of(c(vars_quantitative))))
+multivariable_model <- lm(SalePrice ~ ., data = data[, vars_quantitative])
 
-data$PredictedSalePrice <- predict(multivariable_model, newdata = data)
+# Cargar el archivo de prueba
+test_data1 <- read.csv("test_final.csv")
 
-ggplot(data, aes(x = SalePrice, y = PredictedSalePrice)) +
+test_data1$PredictedSalePrice <- predict(multivariable_model, newdata = test_data1)
+
+ggplot(test_data1, aes(x = SalePrice, y = PredictedSalePrice)) +
   geom_point(alpha = 0.6) +
   geom_smooth(method = "lm", se = TRUE, color = "red") +
   labs(title = "Comparación de Precios de Venta Observados y Predichos",
@@ -77,8 +85,96 @@ ggplot(data, aes(x = SalePrice, y = PredictedSalePrice)) +
   theme_minimal() +
   geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "blue")
 
+rmse_value <- RMSE(test_data1$PredictedSalePrice, test_data1$SalePrice, na.rm = TRUE)
+
+# Calcular RMSE relativo
+rmse_relative <- rmse_value / mean(test_data1$SalePrice, na.rm = TRUE)
+
+print(rmse_relative)
+
 ```
 
 En la gráfica se muestra a relación entre los precios de venta observados y los precios predichos por el modelo de regresión multivariable. La línea roja representa la línea de regresión ajustada a los puntos de datos, mientras que la línea azul discontinua indica la línea ideal donde los valores predichos coinciden exactamente con los valores observados. La mayoría de los puntos están agrupados cerca de la línea roja lo que sugiere que el modelo tiene un buen ajuste general  aunque existen algunas desviaciones notables especialmente en el rango de precios más alto donde el modelo tiende a subestimar los valores.
 
 A pesar de que la línea de regresión se ajusta bien a los datos en la mayor parte del rango los puntos dispersos lejos de la línea azul especialmente hacia la derecha indican que hay casos en los que las predicciones del modelo difieren significativamente de los valores reales. Esto podría deberse a datos atípicos o factores que no están considerados en el modelo y y que de alguna manera influyen en el precio. 
+
+Ahora bien, los resultados son considerablemente satisfactorios, pero es importante analizar con más detalle la regresión lineal obtenida con todas las variables numericas.Lo que debemos de evaluar es que nuestro resultado no esté siendo afectado por multicolinealidad ni sobreajuste. La multicolinealidad ocurre cuando algunas de las variables están demasiado relacionadas entre si. Esto puede causar problemas y sesgo dentro de los resultados, haciendo que el modelo no pueda predecir correctamente los resultados si se le da un set de datos nuevo para realizar pruebas. Anteriormente se obtuvieron los valores: "Multiple R-squared:  0.7925" y	"Adjusted R-squared:  0.783", nuestro modelo de momento muestra una buena correlacón entre las variables numéricas y el hecho de que ambos valoressean cercanos y no extremadamente altos es un buen comienzo. Entonces ahora es buen momento para evaluar el modelo multivariable y remover variables que puedan estar generando ruido o incluso sobre ajuste dentro del modelo. 
+
+```{r multicolinealidad1, echo=FALSE}
+vars_quantitative2 <- names(data)[sapply(data, is.numeric) & names(data) != 'Id' & names(data) != 'PredictedSalePrice']
+
+matriz_cor <- cor(data[, vars_quantitative2])
+
+matriz_cor
+
+corrplot(matriz_cor, method = "circle", type = "upper", tl.col = "black", tl.srt = 45, tl.cex = 0.5)
+
+```
+
+En esta matriz se puede ver a las variables que estan más corrleacioandas, mientras más oscuro sea el azul quiere decir que las variables estan mas correlacionadas. Si 2 o más variables distintas están demasiado correlacionadas esto puede afectar el desempenio del modelo y genrar sobreajuste, el modelo se vuelve peor para generalizar. Entonces lo que tenemos que hacer es eliminar 1 de las variable de las que generan el problema. Ya que es un poco dificil de visualizar la tabla por la cantidad de variables se buscará reducir la tabla a los que tengan una correlación muy alta (digamos 80% de correlación o superior). La razón por lo que sabemos que podemos eliminar 1 de las variables es porque al estar tan relacionadas entre si se vuelve redundante. Por ejemplo una casa que tiene una area de garage grande, tendra más espacio para carros, tener estas 2 variables no es útil y es mejor concervar 1.  
+
+```{r multicolinealidad_comp, echo=False}
+# Identificar correlaciones altas (r > 0.7)
+correlaciones_altas <- which(matriz_cor > 0.7 & matriz_cor < 1, arr.ind = TRUE)
+correlaciones_altas <- data.frame(
+  Variable1 = rownames(matriz_cor)[correlaciones_altas[, 1]],
+  Variable2 = colnames(matriz_cor)[correlaciones_altas[, 2]],
+  Correlación = matriz_cor[correlaciones_altas]
+)
+print(correlaciones_altas)
+
+```
+
+Con estos resultados podemos comprobar que el modelo presenta cierta multicolinealidad específicamente hay 4 pares de variables que tienen una correlación demasiado alta. Estas son:
+* X1stFlrSF <-> TotalBsmtSF
+* TotRmsAbvGrd <-> GrLivArea
+* GarageArea <-> GarageCars
+* OverallQual <-> SalePrice
+
+Como podemos ver las relaciones son redundantes. Una casa que tiene bastante espacio en el primer piso, seguramente tenga un sotano grande; si una casa tiene varios cuartos sobre el nivel del suelo, seguramente tenga un gran espacio sobre el nivel del suelo y por último si el Garage es grande seguramente quepan más carros. Y pues también las casas de alta calidad tendrán un precio más alto. Sabiendo esto se puede ajustar el modelo de regresión lineal.
+
+```{r fixxed_model, echo=FALSE}
+# esto ayuda a encontrar mas variables que son combinacion lineal de otras columnas
+alias(multivariable_modelFinal)
+```
+
+Admás también usamos la función Alias para poder encontrar alguna otra que se nos pueda haber escapado. El correr la funcion podemos ver que la variable TotalBsmtSF se relaciona con las columnas BsmtFinSF1, BsmtFinSF2 y BsmtUnfSF. Al final son medidas relacionadas a los pies cuadrados del sotano, es por eso que tambien son redundantes.Mejora dejamos solo el total
+
+```{r fixxed_model2, echo=FALSE}
+# Crear un nuevo conjunto de variables numéricas excluyendo las redundantes
+vars_quantitative3 <- names(data)[sapply(data, is.numeric) & 
+                                  names(data) != 'Id' & 
+                                  names(data) != 'PredictedSalePrice' &
+                                  !names(data) %in% c("X1stFlrSF", "TotRmsAbvGrd", "GarageCars", "BsmtFinSF2", "BsmtUnfSF", "X2ndFlrSF")]
+
+# Ajustar el nuevo modelo multivariable
+multivariable_modelFinal <- lm(SalePrice ~ ., data = data[, vars_quantitative3])
+summary(multivariable_modelFinal)
+
+plot(multivariable_modelFinal)
+```
+
+```{r check, echo=FALSE}
+# Verificar variables aliasadas (combinaciones lineales)
+alias(multivariable_modelFinal)
+```
+
+```{r finalisimo, echo=FALSE}
+
+# Cargar el archivo de prueba
+test_data <- read.csv("test_final.csv")
+
+# Hacer predicciones sobre los datos de prueba
+pred_Multi_LM <- predict(multivariable_modelFinal, newdata = test_data)
+
+head(pred_Multi_LM)
+sum(is.na(pred_Multi_LM))
+sum(is.na(test_data$SalePrice))
+
+
+rmse_relative <- RMSE(pred_Multi_LM, test_data$SalePrice, na.rm = TRUE) / mean(test_data$SalePrice, na.rm = TRUE)
+
+print(rmse_relative)
+
+
+```
