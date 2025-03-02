@@ -1,0 +1,84 @@
+---
+title: "Multivariate model"
+author: "Irving, Chuy"
+date: "2025-03-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries, include=FALSE}
+library(readr)
+library(kableExtra)
+library(ggplot2)
+library(reshape2)
+library(knitr)
+library(tidyr)
+library(dplyr)
+```
+
+En este documento se realiza un modelo de regesión multivariable para predecir el precio de una casa. Se tomarán en cuenta t
+```{r load_data, include=FALSE}
+data <- read_csv("train_final.csv")
+```
+
+```{r remove_na_columns, include=FALSE}
+porcentaje_na <- sapply(data, function(x) sum(is.na(x)) / length(x)) * 100
+
+columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
+print(columnas_a_eliminar)
+
+data <- data[, !names(data) %in% columnas_a_eliminar]
+```
+
+```{r multivarable_analysis, echo=FALSE}
+
+vars_quantitative <- names(data)[sapply(data, is.numeric) & names(data) != 'Id']
+
+multivariable_model <- lm(SalePrice ~ ., data = data %>% select(one_of(c(vars_quantitative))))
+
+summary(multivariable_model)
+```
+El rango de los residuos va desde **-386501** hasta **339269**, esto sugiere que existen ocasiones en donde el modelo sobre o subestima significativamente el valor de `SalePrice`, puede deberse a valores atípicos o situaciones en donde el modelo no captura bien la manera de calcular el precio.  
+La mediana es de **-2603**, es aún más pequeña que la del modelo univariable lo que sugiera que se ajusta mejor a los datos en la mediana. Sin embargo, el hecho de que sea negativa, sugiere que existe una tendencia del modelo a sobreestimar el precio de la casa.  
+El **Residual Standard Error** es de **39380**, es decir que las predicciones del modelo de `SalePrice` tienden a desviarse en promedio aproximadamente 39,380 del valor real. Este valor proporciona una medida de la calidad del ajuste del modelo, y aunque representa una variabilidad considerable, es común en datos de precios de viviendas debido a la alta heterogeneidad de las propiedades inmobiliarias.
+El modelo tiene **737 grados de libertad**, lo que refleja el número de observaciones libres que quedan después de estimar los parámetros del modelo. Se eliminaron **249 observaciones** debido a datos faltantes, lo que podría afectar la generalización del modelo.  
+El **error cuadrado** es **0.7925**, lo que implica que aproximadamente el 79.25% de la variabilidad en `SalePrice` es explicada por las variables incluidas en el modelo. Este es un valor bastante alto.  
+El **Adjusted R-squared** es **0.783**, ligeramente inferior al error cuadrado ajustado por el número de predictores en el modelo  Un valor de 0.783 indica que, después del ajuste por el número de variables el modelo sigue siendo robusto y explica una gran proporción de la variabilidad en `SalePrice`.  
+El **F-statistic** es **82.81** y evalúa la significancia global del modelo, es decir, prueba si al menos una de las variables explicativas tiene un coeficiente diferente de cero. Con un **p-value** de **< 2.2e-16**, este resultado es altamente significativo sugiriendo que el modelo en su conjunto es válido y que las variables seleccionadas tienen un efecto colectivo significativo en la predicción de `SalePrice`.  
+
+Ahora bien, con respecto de las variables:  
+**`MSSubClass`** el coeficiente estimado de **-230.5** lo que significa que si las otras variables se mantienen constantes, un aumento de una unidad en `MSSubClass` está relacionado con una una disminución el `SalePrice` de 230.5 (probablemente dólares). El error estándar del coeficiente es de **46.46** lo que indica una estimación más precisa del coeficiente. El valor t de **-4.961** lo cual sugiere que `MSSubClass` tiene un efecto  significativo en `SalePrice`.El p-value termina por confirmar que es estadísiticamente significativo, ya que es extremadamente menor al umbral de 0.05 para significancia estadística.  
+**`LotFrontage`** tiene un coeficiente estimado de **-179.1** lo que indica que si las otras variables se mantienen constantes, un aumente de una unidad en `MSSubClass` esta asociado con una disminución en `SalePrice` de 179.1. Aunque también hay que observa que su p-value es de **0.041693** el cual es apenas menor a 0.05, por lo que no podemos asegurar significancia. De igual manera el error estándar es de **87.8** lo cual es ligeramente alto por lo que no indica tanta precisión.
+La variable **`OverallQual`** fue analizada anteriormente y se demostró que tiene gran relevancia.  
+De la mano de esta variable está **`OverallCondition`** con un valor de significancia bajo **0.007962** y un error estándar de **1809** lo cual indica demasiada variabilidad, lo cual provoca considerar que esta variable no sea precisamente relevante o buena predictora para `SalePrice`
+**`YearBuilt`** muestra un coeficiente positivo de **322.4**, indicando que por cada año más reciente en que una casa fue construida, se espera que el `SalePrice` aumente en $322.40, asumiendo que todas las demás variables permanezcan constantes. El p-value de **0.006184** indica una alta significancia estadística de esta variable. Sin embargo, su error estándar de **117.4** sugiere que hay variabilidad en la estimación del efecto del año de construcción, aunque sigue siendo un predictor confiable.  
+**`MasVnrArea`**, que representa el área de revestimiento de mampostería en pies cuadrados, tiene un coeficiente de **21.02** con un p-value de **0.026076**, lo que implica que un aumento de un pie cuadrado en el área de mampostería está asociado con un aumento en `SalePrice` de $21.02. Aunque el efecto es pequeño, es estadísticamente significativo, lo que sugiere que características estéticas como el revestimiento de mampostería pueden afectar positivamente el valor de una propiedad.
+La variable **`BsmtFinSF1`** refleja el área terminada del sótano en pies cuadrados y tiene un coeficiente de **16.73** con un error estándar de **7.74** y un p-value de **0.030972**. Esto indica que cada pie cuadrado adicional de área terminada en el sótano está asociado con un aumento en el `SalePrice` de $16.73, lo cual es estadísticamente significativo y refuerza la idea de que los espacios habitables adicionales incrementan el valor de la vivienda.  
+**`X1stFlrSF`**, el área del primer piso en pies cuadrados, tiene un fuerte impacto positivo en `SalePrice` con un coeficiente de **50.25**. Con un p-value de **2.26e-07**, esta variable muestra una relación muy significativa, sugiriendo que el tamaño del primer piso es un determinante crítico del precio de venta. Dada la baja significancia estadística y un error estándar relativamente bajo (**9.617**), es un predictor robusto.  
+**`GarageCars`**, que cuenta el número de coches que caben en el garaje, tiene un coeficiente de **17290**, indicando que cada espacio adicional en el garaje está asociado con un incremento de $17,290 en `SalePrice`. El p-value de **0.000165** y un error estándar de **4566** confirman la alta relevancia y significancia estadística de esta variable en el modelo.  
+La variable **`TotRmsAbvGrd`**, el total de habitaciones por encima del nivel del suelo (excluyendo baños), tiene un coeficiente positivo de **6578** con un p-value de **0.000693**, lo que significa que cada habitación adicional incrementa el `SalePrice` en $6578. Este resultado enfatiza la importancia del espacio y la funcionalidad en la valoración de las propiedades.
+
+## Gráfico
+```{r multivarable_analysis_graphic, echo=FALSE}
+vars_quantitative <- names(data)[sapply(data, is.numeric) & names(data) != 'Id']
+multivariable_model <- lm(SalePrice ~ ., data = data %>% select(one_of(c(vars_quantitative))))
+
+data$PredictedSalePrice <- predict(multivariable_model, newdata = data)
+
+ggplot(data, aes(x = SalePrice, y = PredictedSalePrice)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
+  labs(title = "Comparación de Precios de Venta Observados y Predichos",
+       x = "Precio de Venta Observado (SalePrice)",
+       y = "Precio de Venta Predicho (PredictedSalePrice)") +
+  theme_minimal() +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "blue")
+
+```
+
+En la gráfica se muestra a relación entre los precios de venta observados y los precios predichos por el modelo de regresión multivariable. La línea roja representa la línea de regresión ajustada a los puntos de datos, mientras que la línea azul discontinua indica la línea ideal donde los valores predichos coinciden exactamente con los valores observados. La mayoría de los puntos están agrupados cerca de la línea roja lo que sugiere que el modelo tiene un buen ajuste general  aunque existen algunas desviaciones notables especialmente en el rango de precios más alto donde el modelo tiende a subestimar los valores.
+
+A pesar de que la línea de regresión se ajusta bien a los datos en la mayor parte del rango los puntos dispersos lejos de la línea azul especialmente hacia la derecha indican que hay casos en los que las predicciones del modelo difieren significativamente de los valores reales. Esto podría deberse a datos atípicos o factores que no están considerados en el modelo y y que de alguna manera influyen en el precio. 

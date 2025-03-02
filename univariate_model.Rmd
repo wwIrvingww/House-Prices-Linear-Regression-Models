@@ -36,10 +36,8 @@ data <- data[, !names(data) %in% columnas_a_eliminar]
 
 ## Modelo univariable
 ```{r univariate_analysis, echo=FALSE}
-# Ajustar el modelo de regresión lineal
 modelo <- lm(SalePrice ~ OverallQual, data = data)
 
-# Ver los resultados del modelo
 summary(modelo)
 
 ```
@@ -53,10 +51,9 @@ El Multiple R-squared es ligeramente menor al cuadrado múltiple, pero todavía 
 
 ## Gráfico de dispersión lineal
 ```{r univariate_analisis_graphic, echo=FALSE}
-# Gráfico de dispersión con línea de regresión
 ggplot(data, aes(x = OverallQual, y = SalePrice)) +
-  geom_point(aes(color = OverallQual), alpha = 0.6) +  # Puntos semi-transparentes coloreados por OverallQual
-  geom_smooth(method = "lm", se = TRUE, color = "red") +  # Línea de regresión lineal con intervalo de confianza
+  geom_point(aes(color = OverallQual), alpha = 0.6) + 
+  geom_smooth(method = "lm", se = TRUE, color = "red") +
   labs(title = "Relación entre Calidad General y Precio de Venta",
        x = "Calidad General (OverallQual)",
        y = "Precio de Venta (SalePrice)") +
