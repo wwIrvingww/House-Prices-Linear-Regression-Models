@@ -8,10 +8,40 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r libraries, include=FALSE}
 library(ggplot2)
+library(GGally)
+library(nortest)
+library(dplyr)
+library(tidyverse)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(discretization)
 ```
 
 ```{r load_data, include=FALSE}
-train_data <- read_csv("train_final.csv")
-test_data <- read.csv("test_final")
+train_dataTree <- read_csv("train_final.csv")
+test_dataTree <- read.csv("test_final.csv")
+```
+
+```{r remove_na_columns, include=FALSE}
+porcentaje_na <- sapply(train_dataTree, function(x) sum(is.na(x)) / length(x)) * 100
+
+columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
+print(columnas_a_eliminar)
+
+train_dataTree <- train_dataTree[, !names(train_dataTree) %in% columnas_a_eliminar]
+```
+
+# Arbol de regresion con todas las variables 
+En este caso no es necesario hacer split nuevamente ya que el archivo train_final.csv ya ya tiene el 70% de los datos. Y el archivo de testing tienen el 30%. Solo es necesario convertir el data frame de respuesta en 2 separados, uno que contenga la respuesta y otro que no.
+
+```{r all_variables, echo=FALSE}
+
+test_resp <- test_dataTree$SalePrice
+test_dataTree$SalePrice <- NULL
+train_dataTree<-train_dataTree %>% mutate_if(is.character,as.factor)
+
+arbol1 <- rpart(SalePrice~., data = train_dataTree)
+rpart.plot(arbol1)
 ```
 
