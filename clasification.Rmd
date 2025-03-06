@@ -1,0 +1,72 @@
+---
+title: "clasification"
+author: "Irving, Chuy"
+date: "2025-03-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r load_data, include=FALSE}
+train_data <- read_csv("train_final.csv")
+test_data <- read.csv("test_final.csv")
+
+```
+
+```{r remove_na_columns, include=FALSE}
+porcentaje_na <- sapply(train_data, function(x) sum(is.na(x)) / length(x)) * 100
+
+columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
+print(columnas_a_eliminar)
+
+train_data <- train_data[, !names(train_data) %in% columnas_a_eliminar]
+```
+
+## Árbol de clasificación  
+
+Se realiza un árbol de clasificación para saber si una casa tiene un precio barato, medio o caro. Para esto hay que hacer una variable categórica que tenga 3 categorías barato, medio y caro.
+```{r discretizando la variable respuesta}
+# Usamos tres cortes basados en cuartiles para generar tres categorías
+categorias <- cut(train_data$SalePrice, breaks=c(min(train_data$SalePrice),
+                                                  quantile(train_data$SalePrice, probs = 1/3),
+                                                  quantile(train_data$SalePrice, probs = 2/3),
+                                                  max(train_data$SalePrice)),
+                  labels=c("barata", "estandar", "cara"), include.lowest=TRUE)
+
+# Asignamos las nuevas categorías al DataFrame
+train_data$consumoCat <- categorias
+
+```
+
+Luego de discretizar la variable millas por galon usando los cuartiles quedan las categorías en la siguiente proporpoción. 
+
+## puntos de corte
+```{r cortes}
+puntos_de_corte <- quantile(train_data$SalePrice, probs = c(0, 1/3, 2/3, 1))
+
+print(puntos_de_corte)
+
+```
+
+```{r variable categrica}
+table(train_data$consumoCat)
+```
+Para clasificar las casas en categorías de "barata", "estándar" y "cara", se han utilizado puntos de corte basados en la distribución de SalePrice. El precio mínimo registrado es $39,300, mientras que el primer cuantil (33.33%) se sitúa en $139,400 y el segundo cuantil (66.66%) en $190,000, alcanzando un máximo de $755,000. Estas cifras permiten definir las categorías: "barata" abarca precios de $39,300 a $139,400, "estándar" de $139,401 a $190,000, y "cara" para precios superiores a $190,001.
+
+La elección de estos límites se fundamenta en la distribución de precios en el mercado inmobiliario, asegurando que cada categoría contenga aproximadamente un tercio de los datos. Esto no solo proporciona equidad en la representación de las diferentes clases, sino que también refleja la sensibilidad al contexto del mercado, lo que hace que las categorías sean relevantes y comprensibles para compradores y vendedores.
+
+Este enfoque permite una segmentación clara y efectiva de los precios, facilitando la toma de decisiones informadas. Al basar las categorías en cuantiles, se garantiza que los análisis posteriores sean estadísticamente relevantes y útiles para todas las partes interesadas, mejorando así la comprensión del mercado inmobiliario.
+
+
+### Arbol de clasificación
+```{r}
+
+train_data <- train_data %>% select(-SalePrice)
+
+# Ajusta el modelo de árbol de decisión
+tree_model <- rpart(consumoCat ~ ., data = train_data, method = "class")
+
+
+```
