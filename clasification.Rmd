@@ -7,6 +7,8 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(rpart)
+library(rpart.plot)
 ```
 
 ```{r load_data, include=FALSE}
@@ -61,12 +63,18 @@ Este enfoque permite una segmentación clara y efectiva de los precios, facilita
 
 
 ### Arbol de clasificación
-```{r}
-
+```{r elimianar variable respuesta}
 train_data <- train_data %>% select(-SalePrice)
+```
 
-# Ajusta el modelo de árbol de decisión
+```{r arbol graficoecho=FALSE}
+
 tree_model <- rpart(consumoCat ~ ., data = train_data, method = "class")
 
+rpart.plot(tree_model, main="Árbol de Clasificación de Precios de Casas", extra=102)
 
 ```
+Se observan las divisiones en las categorías previstas anteriormente. Por defecto la primera categoría que utiliza el árbol es *estandar* , es decir que antes de hacer cualquier división basada en las características, el modelo considera que una gran parte de las casas cae en la categoría "estandar" según los datos de entrenamiento. Además, observamos como la variable que mejor crea esta clasificación es `OverallQual`, lo cual solo termina de confirmar el análisis previsto en donde decíamos que esta variable es la que mejor describe el comportamiento de nuestra variable respuesta. Entonces lo primero que vemos en el diagrama es que si el valor de `OverallQual` es menor a 7 entonces la probabilidad de que sea barata es del 62%, pero si es mayor a 7 entonces la probabilidad de que sea cara es del 38%.  
+Luego podemos ver como una variable importante es `Neigborhood`, en donde si el barrio es de Blueste, BrDale, BrjSIDE, Edwards, IDOTRR, MeadowV, OldTown, Sawyer, SWISU entonces la probabilidad de que sea barata es del 28%, lo que significa que después de la variable `OverallQual`, una variable importante a considerar es `Neigborhood`. En caso de que  no pertenezca, la probabilidad de que sea estándar es del *35%*, y entonces entra en juego la variable *`GrLivArea`* que es el área habitable por encima del nivel del suelo, en donde si es menor a *1067* existe un *10%* de probabilidad que sea barata y acá vuelve a entrar en juego `OverallQual` y si es menor a 6 entonces la probabilidad de que sea barata es del *8%* y si es mayor a 6 existe una probabilidad del *3%* de que sea cara, pero si el `GrivLivArea`  es mayor a 1067 existe un *24%* de que sea un precio estándar, y si volvemos a verificar su valor y este es menor a 1583 la probabilidad de que sea estándar es del 15%, pero si es mayor a 1583 la probabilidad de que sea estándar es del 9%, acá entra en juego otra variablle llamada *`BsmtFinSF1`* que hace referencia al área determinada del sótano respectivamente, el cual si es menor a 610 existe un probabilidad del 7% de que sea precio estándar, pero si fuera mayor a este valor, entonces existe un 3% de que sea cara.  
+Regresando a la partición inicial de `OverallQual`, si este valor fuera mayor 7 la probabilidad de que sea cara es de un *38%* en caso de que el `GrLivArea` sea menor a 1478 y pertenezca y su valor en *Neigborhood* es perteneciente a CollgCr, Edwards, Gilbert, NoRidge NridgHt, OldTown, entonces aumenta a *47%*. En caso de que sea mayor 1478, la probababilidad de que sea cara es de *67%* y acá entra en juego una última variable llamada *`TotalBsmtSF`* que es parecida a `BsmtFinSF1`, pero esta es `TotalBsmtSF`que es el área total del sótano respectivamente, en donde si es menor a 844 la probabilidad de que sea estándar  es de *51%*, pero si es mayor a 844 entonces la probabilidad de que sea cara es del 92%.  
+En conclusión, ahora tenemos conocimiento de nuevas variables que juegan un papel importante en el precio de las casas: OverallQual, GrLivArea, Neighborhood, TotalBsmtSF, BsmFinSF1, ordenado en la jerarquía mencionada recién.
