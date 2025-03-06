@@ -48,7 +48,7 @@ arbol1 <- rpart(SalePrice~., data = train_dataTree)
 rpart.plot(arbol1)
 ```
 
-Con este primer modelo se puede observar cuales son las variables que se consideraron más importantes para la separación de datos. Siendo overallQual la característica principal. 
+Con este primer modelo se puede observar cuales son las variables que se consideraron más importantes para la separación de datos. Siendo overallQual la característica principal par ala clasificacion. Anteriormente, en el análisis con regresión lineal, al analizar las variables logramos llegar a la misma conclusión. Aunque en aquel entonces fue considerablemente más complicado. En este caso con casi el mismo o menor procesamiento de datos se logran ver las variables relevantes para la clasificación incluyendo las categóricas (no numéricas).
 
 ```{r model1_no_params, echo=FALSE}
 # Asegurar que las variables categóricas de test_dataTree tengan los mismos niveles que en train_dataTree
@@ -72,4 +72,73 @@ rmseModelo1test
 rmse_porcentaje <- (rmseModelo1test / mean(test_resp)) 
 rmse_porcentaje
 
+plot(test_resp, col="blue", main="Predicciones vs Valores originales")
+points(predModelo1, col="red")
+legend(30,45,legend=c("original","prediccion"), col=c("blue", "red"), pch=1,cex = 0.8)
+
 ```
+
+Luego de obtener el el valor de RMSE y el valor en porcentaje, podemos ver que el modelo al predecir se desvía `r rmseModelo1test` del valor real. Este es un error considerablemente grande, tomando en cuenta que es el precio de la casa, dicha cantidad representa una diferencia significativa en el precio de una casa. El modelo en general se desvía un `r rmse_porcentaje`. Además de esto, al ver el gráfico aunque sean varios datos se nota la desviación de los valores predichos(rojo), con los valores reales(azul) 
+Observando el gráfico nos damos cuenta que realmente. Por lo que el modelo seguramente puede ser mejorado, ya que en este primer intento se colocaron valores predeterminados y todas las variables del set de datos. 
+
+# Entrenamiento de 3 modelos más variando la profundidad del arbol.
+```{r three_more_models}
+# Modelo 2: Profundidad máxima = 2
+arbol2 <- rpart(SalePrice ~ ., data = train_dataTree, control = rpart.control(maxdepth = 2))
+predModelo2 <- predict(arbol2, newdata = test_dataTree)
+rmseModelo2test <- RMSE(predModelo2, test_resp)
+rmse_porcentaje2 <- (rmseModelo2test / mean(test_resp))
+rpart.plot(arbol2)
+
+# Modelo 3: Profundidad máxima = 7
+arbol3 <- rpart(SalePrice ~ ., data = train_dataTree, control = rpart.control(maxdepth = 7))
+predModelo3 <- predict(arbol3, newdata = test_dataTree)
+rmseModelo3test <- RMSE(predModelo3, test_resp)
+rmse_porcentaje3 <- (rmseModelo3test / mean(test_resp))
+rpart.plot(arbol3)
+
+# Modelo 4: Profundidad máxima = 9
+arbol4 <- rpart(SalePrice ~ ., data = train_dataTree, control = rpart.control(maxdepth = 9))
+predModelo4 <- predict(arbol4, newdata = test_dataTree)
+rmseModelo4test <- RMSE(predModelo4, test_resp)
+rmse_porcentaje4 <- (rmseModelo4test / mean(test_resp))
+rpart.plot(arbol4)
+```
+
+## NOTA: el modelo 4 no se grafica en el html pero si en el RMD, no estamos muy seguros porqué. pero el resultado es el mismo que con cualquier profundidad mayor o igual a 3. De igual manera el resultado del rmse se muestra a continuación en un tabla para comparar los resultados de todos los modelos.
+
+``` {r comp_resultsss }
+# Comparar los RMSE de los modelos
+resultados <- data.frame(
+  Modelo = c("Modelo 1 (default)", "Modelo 2 (maxdepth=2)", "Modelo 3 (maxdepth=7)", "Modelo 4 (maxdepth=9)"),
+  RMSE = c(rmseModelo1test, rmseModelo2test, rmseModelo3test, rmseModelo4test),
+  RMSE_Porcentaje = c(rmse_porcentaje, rmse_porcentaje2, rmse_porcentaje3, rmse_porcentaje4)
+)
+
+resultados
+```
+
+# Ilustración de predicciones de los 3 nuevos modelos
+```{r ploting3_results, echo=FALSE}
+# Modelo 2
+plot(test_resp, col = "blue", main = "Predicciones vs Valores originales (Modelo 2)")
+points(predModelo2, col = "red")
+legend("topleft", legend = c("Original", "Predicción"), col = c("blue", "red"), pch = 1, cex = 0.8)
+
+# Modelo 3
+plot(test_resp, col = "blue", main = "Predicciones vs Valores originales (Modelo 3)")
+points(predModelo3, col = "red")
+legend("topleft", legend = c("Original", "Predicción"), col = c("blue", "red"), pch = 1, cex = 0.8)
+
+# Modelo 4
+plot(test_resp, col = "blue", main = "Predicciones vs Valores originales (Modelo 4)")
+points(predModelo4, col = "red")
+legend("topleft", legend = c("Original", "Predicción"), col = c("blue", "red"), pch = 1, cex = 0.8)
+
+```
+
+# Analisis de resultados de los modelos
+Al probar con distintos valores para la profundidad del árbol, parece que con el default ya se está obteniendo el mejor desempeño posible. Al colocar una profundidad de 2 fue el único valor que dió resultados distintos, pero al colocar menor profundidad que 3 (default) se obtuvo una desviación mayor de `r rmseModelo2test` (51k). Parece que lo más óptimos es una profundidad de 3 o mayor, pero es importante mencionar que luego de la profundidad de 3, los resultados ya no mejoran más, el rmse se queda estancado en `r rmseModelo4test` (46k). Lo cuál es un comportamiento relativamente normal, ya que luego de cierto punto sin hacer tuning, el modelo no puede mejorar aunque se aumente la profundidad. Nuecamente en las gráficass epuede ver la desviación entre los valores reales y los predichos, especialmente en el de profundidad 2 (módelo 2) donde las predicciones están aún más separadas debido a que hay menos precisión por usar menos profundidad. 
+
+# Comparación con el modelo de regresión lineal
+Si tomamos este modelo y lo comparamos con el modelo de regresión lineal observamos que realmente el módle previo sigue siendo un poco mejor. El modelo de regresión tenia una desviación de 33501.36 dolares (0.1847468 en porcentaje). Por lo que realmente el modelo anterior sigue siendo un tanto mejor. Pero aunque sea mejor, el modelo de regresión lineal requirió un análisis mucho más largo y exhaustivo para poder llegar a dicho resultado. Mientras que con un análisis mucho mmás corta fue posible casi igualar al modelo de regresión lineal realizado anteriormente. Lo que nos da a entender que realmente los árboles de regresión y decisión seguramente sean una herramienta más útil y versatil para el manejo de sets de datos con grandes cantidades de variables y una variable de respuesta que es continua.  
