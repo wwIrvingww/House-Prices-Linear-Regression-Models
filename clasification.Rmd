@@ -9,6 +9,11 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(rpart)
 library(rpart.plot)
+library(caret)
+library(readr)
+library(dplyr)
+library(forcats)
+library(knitr)
 ```
 
 ```{r load_data, include=FALSE}
@@ -24,20 +29,32 @@ columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
 print(columnas_a_eliminar)
 
 train_data <- train_data[, !names(train_data) %in% columnas_a_eliminar]
+test_data <- test_data[, !names(test_data) %in% columnas_a_eliminar]
+
+# Combinar conjuntos de entrenamiento y prueba
+combined_data <- bind_rows(train_data, test_data)
+
+# Asegurar que los niveles de las variables categóricas sean consistentes
+combined_data <- combined_data %>% mutate(across(where(is.factor), ~ fct_unify(list(.))))
+
+# Dividir nuevamente en conjuntos de entrenamiento y prueba
+train_data <- combined_data[1:nrow(train_data), ]
+test_data <- combined_data[(nrow(train_data) + 1):nrow(combined_data), ]
+
 ```
+
 
 ## Árbol de clasificación  
 
 Se realiza un árbol de clasificación para saber si una casa tiene un precio barato, medio o caro. Para esto hay que hacer una variable categórica que tenga 3 categorías barato, medio y caro.
-```{r discretizando la variable respuesta}
-# Usamos tres cortes basados en cuartiles para generar tres categorías
+```{r discretizacion, include=FALSE}
+
 categorias <- cut(train_data$SalePrice, breaks=c(min(train_data$SalePrice),
                                                   quantile(train_data$SalePrice, probs = 1/3),
                                                   quantile(train_data$SalePrice, probs = 2/3),
                                                   max(train_data$SalePrice)),
                   labels=c("barata", "estandar", "cara"), include.lowest=TRUE)
 
-# Asignamos las nuevas categorías al DataFrame
 train_data$consumoCat <- categorias
 
 ```
@@ -45,14 +62,14 @@ train_data$consumoCat <- categorias
 Luego de discretizar la variable millas por galon usando los cuartiles quedan las categorías en la siguiente proporpoción. 
 
 ## puntos de corte
-```{r cortes}
+```{r cortes, echo=FALSE}
 puntos_de_corte <- quantile(train_data$SalePrice, probs = c(0, 1/3, 2/3, 1))
 
 print(puntos_de_corte)
 
 ```
 
-```{r variable categrica}
+```{r variable_categrica, echo=FALSE}
 table(train_data$consumoCat)
 ```
 Para clasificar las casas en categorías de "barata", "estándar" y "cara", se han utilizado puntos de corte basados en la distribución de SalePrice. El precio mínimo registrado es $39,300, mientras que el primer cuantil (33.33%) se sitúa en $139,400 y el segundo cuantil (66.66%) en $190,000, alcanzando un máximo de $755,000. Estas cifras permiten definir las categorías: "barata" abarca precios de $39,300 a $139,400, "estándar" de $139,401 a $190,000, y "cara" para precios superiores a $190,001.
@@ -62,15 +79,20 @@ La elección de estos límites se fundamenta en la distribución de precios en e
 Este enfoque permite una segmentación clara y efectiva de los precios, facilitando la toma de decisiones informadas. Al basar las categorías en cuantiles, se garantiza que los análisis posteriores sean estadísticamente relevantes y útiles para todas las partes interesadas, mejorando así la comprensión del mercado inmobiliario.
 
 
-### Arbol de clasificación
-```{r elimianar variable respuesta}
+### Arbol de clasificacion
+```{r elimianar variable respuesta, include=FALSE}
 train_data <- train_data %>% select(-SalePrice)
 ```
 
-```{r arbol graficoecho=FALSE}
+```{r arbol_grafico, echo=FALSE}
 
+# Eliminar la columna problemática (Condition2) del conjunto de entrenamiento
+train_data <- train_data %>% select(-Condition2, -RoofMatl, -Exterior2nd, -Electrical)
+
+# Entrenar el modelo sin la columna Condition2
 tree_model <- rpart(consumoCat ~ ., data = train_data, method = "class")
 
+# Graficar el árbol de clasificación
 rpart.plot(tree_model, main="Árbol de Clasificación de Precios de Casas", extra=102)
 
 ```
@@ -78,3 +100,69 @@ Se observan las divisiones en las categorías previstas anteriormente. Por defec
 Luego podemos ver como una variable importante es `Neigborhood`, en donde si el barrio es de Blueste, BrDale, BrjSIDE, Edwards, IDOTRR, MeadowV, OldTown, Sawyer, SWISU entonces la probabilidad de que sea barata es del 28%, lo que significa que después de la variable `OverallQual`, una variable importante a considerar es `Neigborhood`. En caso de que  no pertenezca, la probabilidad de que sea estándar es del *35%*, y entonces entra en juego la variable *`GrLivArea`* que es el área habitable por encima del nivel del suelo, en donde si es menor a *1067* existe un *10%* de probabilidad que sea barata y acá vuelve a entrar en juego `OverallQual` y si es menor a 6 entonces la probabilidad de que sea barata es del *8%* y si es mayor a 6 existe una probabilidad del *3%* de que sea cara, pero si el `GrivLivArea`  es mayor a 1067 existe un *24%* de que sea un precio estándar, y si volvemos a verificar su valor y este es menor a 1583 la probabilidad de que sea estándar es del 15%, pero si es mayor a 1583 la probabilidad de que sea estándar es del 9%, acá entra en juego otra variablle llamada *`BsmtFinSF1`* que hace referencia al área determinada del sótano respectivamente, el cual si es menor a 610 existe un probabilidad del 7% de que sea precio estándar, pero si fuera mayor a este valor, entonces existe un 3% de que sea cara.  
 Regresando a la partición inicial de `OverallQual`, si este valor fuera mayor 7 la probabilidad de que sea cara es de un *38%* en caso de que el `GrLivArea` sea menor a 1478 y pertenezca y su valor en *Neigborhood* es perteneciente a CollgCr, Edwards, Gilbert, NoRidge NridgHt, OldTown, entonces aumenta a *47%*. En caso de que sea mayor 1478, la probababilidad de que sea cara es de *67%* y acá entra en juego una última variable llamada *`TotalBsmtSF`* que es parecida a `BsmtFinSF1`, pero esta es `TotalBsmtSF`que es el área total del sótano respectivamente, en donde si es menor a 844 la probabilidad de que sea estándar  es de *51%*, pero si es mayor a 844 entonces la probabilidad de que sea cara es del 92%.  
 En conclusión, ahora tenemos conocimiento de nuevas variables que juegan un papel importante en el precio de las casas: OverallQual, GrLivArea, Neighborhood, TotalBsmtSF, BsmFinSF1, ordenado en la jerarquía mencionada recién.
+
+### Testing
+
+```{r model_testing_and_confusion, echo=FALSE}
+# Function to adjust factor levels in test data based on train data
+adjust_all_factors <- function(train, test, replacement = "Other") {
+  # Identify common columns
+  common_cols <- intersect(names(train), names(test))
+  
+  for (col in common_cols) {
+    if (is.factor(train[[col]])) {
+      test_col <- as.character(test[[col]])
+      train_levels <- levels(train[[col]])
+      test_col[!test_col %in% train_levels] <- replacement
+      test[[col]] <- factor(test_col, levels = train_levels)
+      
+      new_vals <- unique(as.character(test[[col]]))
+      if (!all(new_vals %in% train_levels)) {
+        warning(paste("Column", col, "had new levels replaced by", replacement))
+      }
+    }
+  }
+  return(test)
+}
+
+test_data <- adjust_all_factors(train_data, test_data, replacement = "Other")
+
+if("SalePrice" %in% names(test_data)) {
+  categorias_test <- cut(test_data$SalePrice, 
+                          breaks = c(min(test_data$SalePrice),
+                                     quantile(test_data$SalePrice, probs = 1/3),
+                                     quantile(test_data$SalePrice, probs = 2/3),
+                                     max(test_data$SalePrice)),
+                          labels = c("barata", "estandar", "cara"),
+                          include.lowest = TRUE)
+  test_data$consumoCat <- categorias_test
+}
+
+if (!"consumoCat" %in% names(test_data)) {
+  stop("The test data does not contain the target variable 'consumoCat'. 
+        To compute a confusion matrix, please ensure that the test set includes the true labels (e.g., by adding a 'consumoCat' column using the same discretization as the training set).")
+} else {
+  test_data$consumoCat <- factor(test_data$consumoCat, levels = levels(train_data$consumoCat))
+  
+  predicciones <- predict(tree_model, test_data, type = "class")
+
+  predicciones <- factor(predicciones, levels = levels(test_data$consumoCat))
+
+  confusion_matrix <- confusionMatrix(predicciones, test_data$consumoCat)
+  print(confusion_matrix)
+}
+
+```
+
+Se eliminaron ciertas columnas: `Condition2`, `RoofMatl`, `Exterior2nd`, `Electrical`. Ya que el modelo de datos de test existían valores que el de training no estaban presentes, por lo que al hacer la ejecución del modelo nos encontrábamos con errores, además, durante esta y otras fases como la de análisis exploratorio se descrubrió que estas variables no eran verdaderamente relevantes, por lo que no existe problema alguno para eliminiarlas.  
+Ahora hablando de la matriz de confusión tenemos los siguientes datos:  
+Con respectos de las baratas, 125 veces dijo que una casa era barata y en efecto  lo eran, 30 veces dijo que eran baratas cuando en realidad eran estándar y 3 veces dijo que eran baratas cuando en realidad eran caras.  
+Con las estandar, 89 veces acerto diciendo que eran estandar y en efecto lo eran, se equivoco 21 veces diciendo que era estandar, pero en realidad era barata y 25 veces dijo que era estandar, pero en realidad eran caras.  
+Por último, el modelo predijo 118 casas caras y efectivamente eran de esa categoría, se equivocó 23 veces diciendo que era cara, pero en realidad era estandar y 5 veces dijo que era cara cuando en realidad era barata.  
+Entonces observando la diagonal, podemos que se le hace más fácil clasificar baratas y caras que estandares, tiene sentido porque estos son extremos, por lo que tiende a tener menos margen de error.  
+Con respecto de los datos estadísticos tenemos un *acurracy* del *0.7563*, significa que el modelo predice correctamente la categoría de las casas el 75.63 del tiempo. Dado que este valor es notablemente más alto que el No Information Rate, podemos decir que las predicciones del modelo son significativamente mejores que un enfoque en donde solo elegimos la clase más frecuente (estándar).  
+El *intervalo de confianza* para una confianza del 95%, la exactitud real del modelo está entre 71.33% y 79.57%.  
+El *No information Rate* es la proporción de la clase más frecuente en el conjunto de datos. Si se predijera siempre la clase más común, se acertaría el 34.4% de las veces.  
+Al observar las otrás métricas del modelo, encontramos algunos puntos interesantes. Por un lado, la *sensibilidad* de la clase "barata" es bastante alta, alcanzando un *82.78%*. Esto sugiere que el modelo hace un buen trabajo al identificar casas que realmente son baratas. Sin embargo, al observar la clase "estándar", la sensibilidad baja a 62.68%, lo que indica que el modelo puede estar siendo demasiado cauteloso al etiquetar estas casas, resultando en más falsos negativos.
+
+En cuanto a los valores predictivos, el *PPV* para la clase "barata" es del *79.11%*, lo que significa que la mayoría de las casas clasificadas como baratas realmente lo son. Sin embargo, si este valor es bajo en otras categorías, podría ser una señal de que el modelo necesita ajustes. 
