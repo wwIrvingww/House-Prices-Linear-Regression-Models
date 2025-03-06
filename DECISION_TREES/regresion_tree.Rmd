@@ -30,18 +30,46 @@ columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
 print(columnas_a_eliminar)
 
 train_dataTree <- train_dataTree[, !names(train_dataTree) %in% columnas_a_eliminar]
+test_dataTree <- test_dataTree[, !names(test_dataTree) %in% columnas_a_eliminar]
 ```
 
 # Arbol de regresion con todas las variables 
-En este caso no es necesario hacer split nuevamente ya que el archivo train_final.csv ya ya tiene el 70% de los datos. Y el archivo de testing tienen el 30%. Solo es necesario convertir el data frame de respuesta en 2 separados, uno que contenga la respuesta y otro que no.
+En este caso no es necesario hacer split nuevamente ya que el archivo train_final.csv ya tiene el 70% de los datos. El archivo test_final.csv tienen el 30%. Solo es necesario convertir el data frame de respuesta en 2 separados, uno que contenga la respuesta y otro que no.
 
 ```{r all_variables, echo=FALSE}
 
 test_resp <- test_dataTree$SalePrice
 test_dataTree$SalePrice <- NULL
+
 train_dataTree<-train_dataTree %>% mutate_if(is.character,as.factor)
+test_dataTree<-test_dataTree %>% mutate_if(is.character,as.factor)
 
 arbol1 <- rpart(SalePrice~., data = train_dataTree)
 rpart.plot(arbol1)
 ```
 
+Con este primer modelo se puede observar cuales son las variables que se consideraron más importantes para la separación de datos. Siendo overallQual la característica principal. 
+
+```{r model1_no_params, echo=FALSE}
+# Asegurar que las variables categóricas de test_dataTree tengan los mismos niveles que en train_dataTree
+# ya que los datos se hicieron spli antes de hacer factor esto es necesario
+
+for (col in names(train_dataTree)) {
+  if (is.factor(train_dataTree[[col]])) {
+    # Verificar si la columna existe en test_dataTree
+    if (col %in% names(test_dataTree)) {
+      test_dataTree[[col]] <- factor(test_dataTree[[col]], levels = levels(train_dataTree[[col]]))
+    }
+  }
+}
+
+predModelo1 <- predict(arbol1, newdata = test_dataTree)
+rmseModelo1test<-RMSE(predModelo1,test_resp)
+
+rmseModelo1test
+
+# desviacion pero en porcentaje.
+rmse_porcentaje <- (rmseModelo1test / mean(test_resp)) 
+rmse_porcentaje
+
+```
