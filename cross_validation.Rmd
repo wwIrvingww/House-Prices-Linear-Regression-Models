@@ -1,0 +1,135 @@
+---
+title: "Cross Validation"
+author: "Irving, Chuy"
+date: "2025-03-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Validación cruzada
+A continuación se entrena un modelo con validación cruzada para después comparar su rendimiento con el arbol de decisión.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(readr)
+library(dplyr)
+library(forcats)
+library(knitr)
+```
+
+```{r load_data, include=FALSE}
+train_data <- read_csv("train_final.csv")
+test_data <- read.csv("test_final.csv")
+
+```
+
+```{r prepare_data, include=FALSE}
+numeric_columns <- train_data %>% select(where(is.numeric)) %>% names ()
+categorical_columns <- train_data %>% select(where(is.character)) %>% names ()
+
+preProc_num <- preProcess(train_data[, numeric_columns], method = "medianImpute")
+train_data[, numeric_columns] <- predict(preProc_num, train_data[, numeric_columns])
+
+for (col in categorical_columns) {
+  moda <- names(sort(table(train_data[[col]]), decreasing = TRUE)) [1]
+  train_data[[col]][is.na(train_data[[col]])] <- moda
+}
+
+na_summary <- colSums(is.na(train_data))
+
+preProc <- preProcess(train_data, method = c("medianImpute"))
+train_data <- predict(preProc, train_data)
+
+```
+
+
+## Validación cruzada para clasificacion
+```{r cross_validation, echo=FALSE}
+if (!"consumoCat" %in% colnames(train_data)) {
+  categorias <- cut(train_data$SalePrice, 
+                    breaks = c(min(train_data$SalePrice),
+                               quantile(train_data$SalePrice, probs = 1/3),
+                               quantile(train_data$SalePrice, probs = 2/3),
+                               max(train_data$SalePrice)),
+                    labels = c("barata", "estandar", "cara"),
+                    include.lowest = TRUE)
+
+  train_data$consumoCat <- categorias
+}
+
+train_data <- train_data %>% select(-SalePrice)
+
+control <- trainControl(method = "cv", number = 5)
+
+# Entrenar árbol de clasificación
+set.seed(123)  # Reproducibilidad
+modelo_clasificacion <- train(consumoCat ~ .,data = train_data, method = "rpart",trControl = control,metric = "Accuracy")
+
+print(modelo_clasificacion)
+
+rpart.plot(modelo_clasificacion$finalModel, main="Árbol de Clasificación con Validación Cruzada")
+
+print(modelo_clasificacion$results)
+```
+Podemos observar como el mejor modelo fue el que tiene un cp de 0.44, pues su acurracy fie el más alto, alcanzando un valor de 0.6876, lo que nos indica un que el modelo clasifica correctamente (aprox) 7 de cada 10 casas, y un kappa de 0.53, este valor indica que es mejor a un clsificador aleatorio.  
+Con respecto de del árbol de clasificación obervamos como de nuevo la variable que mejor clasifica por excelencia es `OverallQuall`. Si el valor de esta es menor a 7 entonces existe una mayor probabilidad de que pertenezca a un precio barato o estandar. Dentro de este subgrupo de OverallQual < 7 se introduce una división donde si OverallQual es menor a 6, existe una mayor tendencia a que sea barata, mientras que valores entre 6 y 7 sugieren la posibilidad de que sean estándar.  
+Por otro lado, las viviendas con OverallQual mayor 7 se categorizan en su mayoría como caras.  
+A simple vista podemos decir que el modelo de clasification de árbol posee un acurracy más alto, con un valor de 0.7563, por lo que podemos decir que tiene mejor desempeño que este modelo que es de validación cruzada.  
+
+## Probando con diferentes profundidades
+```{r antoher_profundity}
+# Definir configuraciones de profundidad
+depth_settings <- list(
+  modelo1 = list(maxdepth = 4),
+  modelo2 = list(maxdepth = 6),
+  modelo3 = list(maxdepth = 8)
+)
+
+# Crear lista para almacenar los modelos
+resultados <- list()
+
+# Entrenar los modelos con diferentes profundidades
+for (nombre in names(depth_settings)) {
+  set.seed(123)
+  modelo <- train(
+    consumoCat ~ ., 
+    data = train_data, 
+    method = "rpart", 
+    trControl = trainControl(method = "cv", number = 5),
+    tuneLength = 10,  # Ajusta automáticamente cp probando 10 valores diferentes
+    control = rpart.control(maxdepth = depth_settings[[nombre]]$maxdepth)
+  )
+  resultados[[nombre]] <- modelo
+}
+
+accuracy_results <- data.frame(
+  Modelo = character(),
+  Profundidad = numeric(),
+  Accuracy = numeric(),
+  stringsAsFactors = FALSE
+)
+
+for (nombre in names(resultados)) {
+  profundidad <- depth_settings[[nombre]]$maxdepth
+  accuracy <- max(resultados[[nombre]]$results$Accuracy)
+
+  accuracy_results <- rbind(accuracy_results, data.frame(
+    Modelo = nombre,
+    Profundidad = profundidad,
+    Accuracy = accuracy
+  ))
+
+  print(paste("Mostrando el árbol:", nombre, "- Profundidad:", profundidad))
+
+  rpart.plot(resultados[[nombre]]$finalModel, main = paste("Árbol con", nombre, "\nProfundidad:", profundidad))
+}
+
+print(accuracy_results)
+```
+Al realizar las prueba de validación cruzada para distintos niveles de profundida en el árbol, observamos que entre la profundiad de 6 y 8 no encontramos diferencia alguna, lo que nos dice que 6 es el máximo de profundida significante. El valor del `acurracy` es de *0.7630*, el cual ha sido hasta ahora el nivel más alto que se ha obtenido. 

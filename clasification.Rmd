@@ -166,3 +166,5 @@ El *No information Rate* es la proporción de la clase más frecuente en el conj
 Al observar las otrás métricas del modelo, encontramos algunos puntos interesantes. Por un lado, la *sensibilidad* de la clase "barata" es bastante alta, alcanzando un *82.78%*. Esto sugiere que el modelo hace un buen trabajo al identificar casas que realmente son baratas. Sin embargo, al observar la clase "estándar", la sensibilidad baja a 62.68%, lo que indica que el modelo puede estar siendo demasiado cauteloso al etiquetar estas casas, resultando en más falsos negativos.
 
 En cuanto a los valores predictivos, el *PPV* para la clase "barata" es del *79.11%*, lo que significa que la mayoría de las casas clasificadas como baratas realmente lo son. Sin embargo, si este valor es bajo en otras categorías, podría ser una señal de que el modelo necesita ajustes. 
+
+##
