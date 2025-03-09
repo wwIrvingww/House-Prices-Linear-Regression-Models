@@ -144,7 +144,7 @@ Al probar con distintos valores para la profundidad del árbol, parece que con e
 # Comparación con el modelo de regresión lineal
 Si tomamos este modelo y lo comparamos con el modelo de regresión lineal observamos que realmente el módle previo sigue siendo un poco mejor. El modelo de regresión tenia una desviación de 33501.36 dolares (0.1847468 en porcentaje). Por lo que realmente el modelo anterior sigue siendo un tanto mejor. Pero aunque sea mejor, el modelo de regresión lineal requirió un análisis mucho más largo y exhaustivo para poder llegar a dicho resultado. Mientras que con un análisis mucho mmás corta fue posible casi igualar al modelo de regresión lineal realizado anteriormente. Lo que nos da a entender que realmente los árboles de regresión y decisión seguramente sean una herramienta más útil y versatil para el manejo de sets de datos con grandes cantidades de variables y una variable de respuesta que es continua.  
 
-#Prueba de árbolde regresión pero ahora con random forest
+#Prueba de árbol de regresión pero ahora con random forest
 Como se vio en el análisis previo con la profunidad de 3 es con la que se han obtenido el menor RMSE, por lo que en este caso se usará esa misma profundidad para usar random forest con el arbol de regresion. 
 
 

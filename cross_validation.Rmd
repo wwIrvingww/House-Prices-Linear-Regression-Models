@@ -12,7 +12,7 @@ knitr::opts_chunk$set(echo = TRUE)
 ## Validación cruzada
 A continuación se entrena un modelo con validación cruzada para después comparar su rendimiento con el arbol de decisión.
 
-```{r setup, include=FALSE}
+```{r setup2, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(rpart)
 library(rpart.plot)
@@ -133,3 +133,37 @@ for (nombre in names(resultados)) {
 print(accuracy_results)
 ```
 Al realizar las prueba de validación cruzada para distintos niveles de profundida en el árbol, observamos que entre la profundiad de 6 y 8 no encontramos diferencia alguna, lo que nos dice que 6 es el máximo de profundida significante. El valor del `acurracy` es de *0.7630*, el cual ha sido hasta ahora el nivel más alto que se ha obtenido. 
+
+#Prueba de árbol de decisión pero ahora con random forest
+```{r random_forest_clasification}
+str(train_data)
+train_data <- train_data %>% select(-c("Id"))
+
+control <- trainControl(method = "cv", number = 5)
+
+# Entrenar el modelo de Random Forest
+set.seed(123) 
+modelo_rf <- train(
+  consumoCat ~ .,  # Formula: predecir consumoCat usando todas las demás columnas
+  data = train_data,  
+  method = "rf",  # Random Forest
+  trControl = control,  
+  metric = "Accuracy",  
+  tuneLength = 5,
+  ntree = 500
+)
+
+modelo_rf
+
+# Ver la importancia de las variables
+var_importance <- varImp(modelo_rf)
+plot(var_importance, main = "Importancia de las variables en Random Forest", top = 20)
+
+# Comparar con el accuracy del árbol de decisión
+print(paste("Accuracy del árbol de decisión:", max(resultados$modelo3$results$Accuracy)))
+print(paste("Accuracy de Random Forest:", max(modelo_rf$results$Accuracy)))
+
+```
+
+Como se puede observar al final este fue el mejor resultado de todos los modelos que fueron entrenados, superando incluso al algoritmo de regresión lineal y las clasificaciones realizadas anteriormente. Es incluso mejor que el random forest de regresion. Logrando un Accuracy de 83%, este algoritmo es mucho más pesado que los demás debido a que aparte de hacer tuning para la mejora de hiperparámetros, se están realizando una gran cantidad de árboles para poder determinar variables más importantes. Al tener muchos arboles (500 en este caso de prueba), lo que hace esto es haer muchas predicciones dentro del entrenamiento con los distintos arboles. Los árboles tienen bastante variabilidad, ya que el muestro involucra distintos procesos aleatorios, lo cuál nos garantiza una mayor generalización y menos overfitting (el cuál fue el problema que tuvimos con la regresión lineal). Además, en este caso la clasificación ayuda bastante a que el modelo pueda predecir sobre una variable discreta (categoría de la casa) en un lugar de una variable continua (el precio). Ya que se tienen definidos rangos es que el módelo busca la mayor coincidencia entre las predicciones de los distintos árboles. Esta discretización ayuda mucho a mejroar el desempeño y nos permitió un realizar un modelo con alto accuracy tomando en cuenta las variables más relevantes. Como se puede ver en la gráfica, las variables más importante coinciden con las que se analizaron tanto la regresión lineal como en el arbol de clasificación. Por lo que podemos concluir que el modelo entrenado es bastante preciso y generalizado.Otro indicador además de l accuracy es el kappa. Este resultó ser mucho mayor a 0.50 (0.75 al final), lo cuál indica que el módelo no solo predice aleatoriamente y que de hecho es mejor que una clasificación aleatoria.
+
