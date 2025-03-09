@@ -16,10 +16,11 @@ library(rpart)
 library(rpart.plot)
 library(caret)
 library(discretization)
+library(randomForest)
 ```
 
 ```{r load_data, include=FALSE}
-train_dataTree <- read_csv("train_final.csv")
+train_dataTree <- read.csv("train_final.csv")
 test_dataTree <- read.csv("test_final.csv")
 ```
 
@@ -142,3 +143,42 @@ Al probar con distintos valores para la profundidad del árbol, parece que con e
 
 # Comparación con el modelo de regresión lineal
 Si tomamos este modelo y lo comparamos con el modelo de regresión lineal observamos que realmente el módle previo sigue siendo un poco mejor. El modelo de regresión tenia una desviación de 33501.36 dolares (0.1847468 en porcentaje). Por lo que realmente el modelo anterior sigue siendo un tanto mejor. Pero aunque sea mejor, el modelo de regresión lineal requirió un análisis mucho más largo y exhaustivo para poder llegar a dicho resultado. Mientras que con un análisis mucho mmás corta fue posible casi igualar al modelo de regresión lineal realizado anteriormente. Lo que nos da a entender que realmente los árboles de regresión y decisión seguramente sean una herramienta más útil y versatil para el manejo de sets de datos con grandes cantidades de variables y una variable de respuesta que es continua.  
+
+#Prueba de árbolde regresión pero ahora con random forest
+Como se vio en el análisis previo con la profunidad de 3 es con la que se han obtenido el menor RMSE, por lo que en este caso se usará esa misma profundidad para usar random forest con el arbol de regresion. 
+
+
+```{r random_forest}
+set.seed(123)
+# manejo de NA, random forest no le gustan los na :0
+train_dataTree <- train_dataTree[!is.na(train_dataTree$SalePrice), ]
+
+filas_completas <- complete.cases(test_dataTree)
+test_dataTree <- test_dataTree[filas_completas, ]
+test_resp <- test_resp[filas_completas]
+
+# Verificar que las columnas y niveles de factores coincidan
+# ver que test_dataTree tenga las mismas columnas que train_dataTree
+test_dataTree <- test_dataTree[, colnames(train_dataTree)[colnames(train_dataTree) != "SalePrice"]]
+
+rf_regresion <- randomForest(
+  SalePrice ~ ., 
+  data = train_dataTree, 
+  ntree = 1000, 
+  mtry = 30,
+  na.action = na.omit  
+)
+
+# predecir
+predicciones_rf <- predict(rf_regresion, newdata = test_dataTree)
+
+# RMSE y RMSE porcentual
+rmseModelo5test <- RMSE(predicciones_rf, test_resp)
+rmse_porcentaje5 <- (rmseModelo5test / mean(test_resp)) 
+
+print(rmseModelo5test)
+print(rmse_porcentaje5)
+
+```
+
+Como podemos ver al final este ha sido un muy buen modelo. Al utilizar la cantidad de 1000 árboles para el entrenamiento y la técnica de random forest, se obtuveron resultados bastante satisfactorios. Teniendo una desviación promedio de tan solo el 14.78%, el cuál representa una desviación promedio de 31k dolares. Es una mejora enorme si lo comparamos con los árboles de regresión normal que realizamos anteriormente. Anteriromente la desviación no bajaba de los 46k dolares, seguramente porque hacíamos uso de todas las variables dentro del modelos sin restricción. Ahora bien, para hacer el random forest elegimos 30 variables con 1000 arboles. Esto significa que se harán 1000 arboles en los cuales se usarán 30 variables al azar en cada uno y de todos estos árboles se combinan las predicciones para obtener una predicción final con mayor precisión, lo cuál se refleja en la mejora del modelo. 
