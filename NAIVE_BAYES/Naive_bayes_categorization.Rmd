@@ -1,5 +1,5 @@
 ---
-title: "clasification"
+title: "Naive Bayes para clasificacion"
 author: "Irving, Chuy"
 date: "2025-03-05"
 output: html_document
@@ -69,7 +69,7 @@ test_data$consumoCat <- categorias_test
 
 ```
 
-Luego de discretizar la variable de precio de venta de la casa, usando los cuartiles, quedan las categorías en la siguiente proporpoción. 
+Luego de discretizar la variable de precio de venta de la casa, usando los cuartiles, quedan las categorías en la siguiente proporpoción
 
 ## puntos de corte
 ```{r cortes, echo=FALSE}
@@ -90,8 +90,9 @@ test_data <- test_data %>% select(-SalePrice)
 model <- naiveBayes(consumoCat ~ ., data = train_data)
 
 ```
+Lo que hicimos fue discretizar la variable resspuesta de precio con cuantiles. Es prácticamente dividir los datos en distintos rangos de precios (en porcentajes por los cuantiles) de casas para poder convertir la variable cuantitativa continua en en una categórica. Esto ayudará a poder hacer predicciones y evaluar el modelo con una matriz de confusión. Específicamente partimos la información en 3 cuantiles para poder hacer la clasificación las casas baratas estan en precios por debajo del percentil 33, las casas Estándar se encuentran entre el percentil 66 y las casas caras se encuentran sobre el percentil de 66. Con esto tuvimos resultados bastante buenos y los datos quedaron bastante balanceados. Habiedno **341 casas baratas**, **346 estándar** y **334 caras**. El balanceo de datos es muy importante ya que es necesario para que no hayan sesgos en la prueba del accuracy.
 
-## 5. Utilice los modelos con el conjunto de prueba y determine la eficiencia del algoritmo para predecir y clasificar.
+## 5. Utilice los modelos con el conjunto de prueba y determine la eficiencia del algoritmo para predecir y clasificar. 
 
 ```{r predict_and_test}
 # Realizar predicciones en el conjunto de prueba
@@ -120,6 +121,10 @@ print(f1_score)
 
 ```
 
+Al final hemos obtenido un accuracy general de 67.2%, no es el mejor modelo de predicción aún pero es mejor que una clasificación aleatoria lo cuál es un buen indicador. Nuevamente el modelo puede que esté teniendo algunos problemas para clasificar por la gran cantidad de variables, ya que solo removimos  las columnas que tuvieran demasiados valores vacíos. Pero aparte de eso se incluyeron todas las variables tanto categ´ricas como numéricas. 
+
+Para tener un buen entendimiento de los resultados se realizaron las pruebas de accuracy, recall y f1 score para cada una de las clasificaciones aparte de la evaluación general. Donde se puede ver que realmente el mayor problemas es la clasificación de casa **Estándar**, siendo la que tiene las peores métricas con diferencia en todas las evaluaciones. El accuracy fue del 60% y el recall de 26%, lo cuál indica que la clasificación realmente es mala en la mayoría de la casas para las casos de precio "promedio" en base a sus características. Para profundizar más en estos resultados es útil también visualizar la matríz de confusión. 
+
 ## 6. Haga un análisis de la eficiencia del modelo de clasificación usando una matriz de confusión. Tenga en cuenta la efectividad, donde el algoritmo se equivocó más, donde se equivocó menos y la importancia que tienen los errores.
 
 ```{r confusion_matrix}
@@ -137,3 +142,6 @@ ggplot(as.data.frame(conf_matrix$table), aes(x = Reference, y = Prediction, fill
   theme_minimal()
 
 ```
+
+
+La matríz al final nos confirma el análisis realizado en el inciso anterior, realmente la clasificación con más problemas es la estándar. Pero ahora con la matríz podemos ver como es que esta clasificación se está realizando. Resulta que la clase estándar por lo general se clasifica de manera erronea como barata. Realmente fueron pocas las casas estándar que fueron calificadas como caras. Viendo la diagonal, en este caso de esquina inferior izquierda a esquna superior derecha por la posición de los labels en el gráfico, realmente la clasificación de casas baratas y caras fueron bastante exitosas y tienen un error pequeño. El color azul fuerte junto con el número nos lo confirma (agregado a las métricas analizidas anteriormente). La matriz es muy importante para analizar errores de manera visual y conocer específicamente en que parte es que el modelo falló y como falló. Ahora lo que corresponde es mejorar el módelo ajustando variables, eliminando variables o bien tuneando hiperparámetros para mejorar el desempeño. 
