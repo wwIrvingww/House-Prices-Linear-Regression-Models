@@ -1,0 +1,139 @@
+---
+title: "clasification"
+author: "Irving, Chuy"
+date: "2025-03-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(readr)
+library(dplyr)
+library(forcats)
+library(knitr)
+library(e1071)
+```
+
+```{r load_data, include=FALSE}
+train_data <- read.csv("train_final.csv")
+test_data <- read.csv("test_final.csv")
+
+```
+
+```{r remove_na_columns, include=FALSE}
+porcentaje_na <- sapply(train_data, function(x) sum(is.na(x)) / length(x)) * 100
+
+columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
+print(columnas_a_eliminar)
+
+train_data <- train_data[, !names(train_data) %in% columnas_a_eliminar]
+test_data <- test_data[, !names(test_data) %in% columnas_a_eliminar]
+
+# Combinar conjuntos de entrenamiento y prueba
+combined_data <- bind_rows(train_data, test_data)
+
+# Asegurar que los niveles de las variables categóricas sean consistentes
+combined_data <- combined_data %>% mutate(across(where(is.factor), ~ fct_unify(list(.))))
+
+# Dividir nuevamente en conjuntos de entrenamiento y prueba
+train_data <- combined_data[1:nrow(train_data), ]
+test_data <- combined_data[(nrow(train_data) + 1):nrow(combined_data), ]
+
+```
+
+
+## 4. Clasificacion de variables SalePrice
+
+Se realiza una clasificación para saber si una casa tiene un precio barato, medio o caro. Para esto hay que hacer una variable categórica que tenga 3 categorías barato, medio y caro.
+```{r discretizacion, include=FALSE}
+
+categorias <- cut(train_data$SalePrice, breaks=c(min(train_data$SalePrice),
+                                                  quantile(train_data$SalePrice, probs = 1/3),
+                                                  quantile(train_data$SalePrice, probs = 2/3),
+                                                  max(train_data$SalePrice)),
+                  labels=c("barata", "estandar", "cara"), include.lowest=TRUE)
+
+train_data$consumoCat <- categorias
+
+categorias_test <- cut(test_data$SalePrice, 
+                       breaks=c(min(test_data$SalePrice),
+                                quantile(test_data$SalePrice, probs = 1/3),
+                                quantile(test_data$SalePrice, probs = 2/3),
+                                max(test_data$SalePrice)),
+                       labels=c("barata", "estandar", "cara"), include.lowest=TRUE)
+test_data$consumoCat <- categorias_test
+
+
+```
+
+Luego de discretizar la variable de precio de venta de la casa, usando los cuartiles, quedan las categorías en la siguiente proporpoción. 
+
+## puntos de corte
+```{r cortes, echo=FALSE}
+puntos_de_corte <- quantile(train_data$SalePrice, probs = c(0, 1/3, 2/3, 1))
+
+print(puntos_de_corte)
+
+```
+
+```{r variable_categrica}
+table(train_data$consumoCat)
+#quitar la variable respuesta anteriore del precio
+train_data <- train_data %>% select(-SalePrice)
+# quitar columna SalePrice de test_data 
+test_data <- test_data %>% select(-SalePrice)
+
+# Entrenar el modelo
+model <- naiveBayes(consumoCat ~ ., data = train_data)
+
+```
+
+## 5. Utilice los modelos con el conjunto de prueba y determine la eficiencia del algoritmo para predecir y clasificar.
+
+```{r predict_and_test}
+# Realizar predicciones en el conjunto de prueba
+predictions <- predict(model, test_data)
+
+conf_matrix <- confusionMatrix(predictions, test_data$consumoCat)
+print(conf_matrix)
+
+# Precisión general
+accuracy <- conf_matrix$overall['Accuracy']
+print(paste("Precisión general:", accuracy))
+
+# Precisión, recall y F1-score por clase
+precision <- conf_matrix$byClass[, "Precision"]
+recall <- conf_matrix$byClass[, "Recall"]
+f1_score <- conf_matrix$byClass[, "F1"]
+
+print("Precisión por clase:")
+print(precision)
+
+print("Recall por clase:")
+print(recall)
+
+print("F1-score por clase:")
+print(f1_score)
+
+```
+
+## 6. Haga un análisis de la eficiencia del modelo de clasificación usando una matriz de confusión. Tenga en cuenta la efectividad, donde el algoritmo se equivocó más, donde se equivocó menos y la importancia que tienen los errores.
+
+```{r confusion_matrix}
+# Evaluar el modelo
+conf_matrix <- confusionMatrix(predictions, test_data$consumoCat)
+print(conf_matrix)
+
+ggplot(as.data.frame(conf_matrix$table), aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(title = "Matriz de Confusión",
+       x = "Valor Real",
+       y = "Predicción") +
+  theme_minimal()
+
+```
