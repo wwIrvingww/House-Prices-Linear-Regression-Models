@@ -310,3 +310,220 @@ El primero modelo (el anterior) muestra un rendimiento superior en términos de 
 El de validación cruzada falló por completo al detectar la categoría `barata`, mientras que el segundo modelo obtuvo una sensibilidad de 99.34% casi perecta, lo cual también es un poco preocupante.  
 El balance Acurracy en el modelo anteior es superior con un 82.31% para la clase `barata` y 85.37 para `cara` lo que demuestra un equilibrio a la hora de detectar verdaeres positvos y negativos por categoria.  
 El valor de kappa en el modelo anterior fue de 0.5047 sugiera ser mejor que la aleatoriedad y es además superior a la del modelo de validación cruzada que apenas alcanzó un 0.3342
+
+##Tunning
+```{r nan_values, include=FALSE}
+threshold <- 0.80
+cols_to_remove <- sapply(train_data, function(x) mean(is.na(x))) > threshold
+cols_to_remove <- names(cols_to_remove[cols_to_remove])
+
+train_data <- train_data %>% select(-one_of(cols_to_remove))
+test_data <- test_data %>% select(-one_of(cols_to_remove))
+
+train_data <- train_data %>%
+  mutate_if(is.numeric, ~ifelse(is.na(.), median(., na.rm = TRUE), .))
+
+train_data <- train_data %>%
+  mutate_if(is.factor, ~ifelse(is.na(.), as.character(get_mode(.)), .))
+
+get_mode <- function(v) {
+  uniqv <- unique(na.omit(v))
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+sum_na_clean <- sapply(train_data, function(x) sum(is.na(x)))
+
+head(train_data)
+
+train_data <- na.omit(train_data)
+test_data <- na.omit(test_data)
+
+
+```
+
+```{r}
+multiClassSummary <- function(data, lev = NULL, model = NULL) {
+  cm <- confusionMatrix(data$pred, data$obs, dnn = c('Prediction', 'Reference'))
+  accuracy <- cm$overall['Accuracy']
+
+  # Evitar NaN cuando no hay predicciones para una clase
+  precision <- ifelse(is.nan(cm$byClass['Precision']), 0, cm$byClass['Precision'])
+  recall <- ifelse(is.nan(cm$byClass['Recall']), 0, cm$byClass['Recall'])
+  F1 <- ifelse(is.nan(cm$byClass['F1']), 0, cm$byClass['F1'])
+
+  # Devuelve un listado con todas las métricas
+  c(Accuracy = accuracy, Precision = mean(precision, na.rm = TRUE), Recall = mean(recall, na.rm = TRUE), F1 = mean(F1, na.rm = TRUE))
+}
+table(train_data_transformed$consumoCat)
+
+
+```
+
+
+```{r}
+# Cargar las bibliotecas necesarias
+library(caret)
+library(doParallel)
+
+# Configurar el control de entrenamiento con paralelización y menos repeticiones
+registerDoParallel(cores = detectCores() - 1)  # Utiliza todos los núcleos disponibles menos uno
+
+# Definir una función de resumen personalizada para clasificación multiclase
+multiClassSummary <- function(data, lev = NULL, model = NULL) {
+  if (length(lev) != 3) stop("Your outcome has to have exactly three levels!")
+  
+  # Calcula la matriz de confusión y extrae las métricas
+  cm <- confusionMatrix(data$pred, data$obs)
+  accuracy <- cm$overall['Accuracy']
+  precision <- cm$byClass['Precision']
+  recall <- cm$byClass['Recall']
+  F1 <- cm$byClass['F1']
+  
+  # Promedio de Precision, Recall y F1 si se requiere manejar múltiples clases
+  mean_precision <- mean(precision, na.rm = TRUE)
+  mean_recall <- mean(recall, na.rm = TRUE)
+  mean_F1 <- mean(F1, na.rm = TRUE)
+  
+  # Devuelve un listado con todas las métricas
+  c(Accuracy = accuracy, Precision = mean_precision, Recall = mean_recall, F1 = mean_F1)
+}
+
+# Configuración del control de entrenamiento
+trainControl <- trainControl(
+  method = "cv",
+  number = 5,  # Reducción de pliegues
+  savePredictions = "final",
+  summaryFunction = multiClassSummary,
+  allowParallel = TRUE  # Permite la paralelización
+)
+
+# Rejilla de tunning simplificada
+tuneGrid <- expand.grid(
+  laplace = c(0, 1),  # Valores críticos
+  usekernel = c(TRUE, FALSE),
+  adjust = c(1)  # Valor central
+)
+
+# Asumiendo que 'train_data_transformed' es tu conjunto de datos ya procesado y listo para usar
+# Entrenar el modelo con la nueva configuración de resumen
+set.seed(123)  # Para asegurar reproducibilidad
+modelo_nb_tuned <- train(
+  consumoCat ~ .,
+  data = train_data_transformed,
+  method = "naive_bayes",
+  trControl = trainControl,
+  tuneGrid = tuneGrid,
+  metric = "Accuracy"
+)
+
+# Imprimir los resultados del modelo tuneado
+print(modelo_nb_tuned)
+
+```
+
+
+```{r}
+library(caret)
+
+# Definir una función de resumen personalizada para clasificación multiclase
+multiClassSummary <- function(data, lev = NULL, model = NULL) {
+  if (is.null(lev)) lev <- levels(data$obs)
+  if (length(lev) != 3) stop("Your outcome has to have exactly three levels!")
+  
+  # Calcula la matriz de confusión
+  cm <- confusionMatrix(data$pred, data$obs, mode = "prec_recall")
+
+  # Extraer métricas
+  precision <- cm$byClass['Precision']
+  recall <- cm$byClass['Recall']
+  F1 <- cm$byClass['F1']
+  accuracy <- cm$overall['Accuracy']
+  
+  # Devolver todas las métricas
+  c(Accuracy = accuracy, Precision = mean(precision, na.rm = TRUE), Recall = mean(recall, na.rm = TRUE), F1 = mean(F1, na.rm = TRUE))
+}
+
+# Configuración del control de entrenamiento
+trainControl <- trainControl(
+  method = "cv",
+  number = 10,
+  savePredictions = "final",
+  summaryFunction = multiClassSummary,
+  classProbs = TRUE  # Si necesitas probabilidades de clase
+)
+
+# Configuración de la rejilla de tunning
+tuneGrid <- expand.grid(
+  laplace = seq(0, 5, by = 1),
+  usekernel = c(TRUE, FALSE),
+  adjust = seq(0.5, 2, by = 0.5)
+)
+
+# Entrenar el modelo con la nueva función de resumen
+set.seed(123)
+model_nb_tuned <- train(
+  consumoCat ~ .,
+  data = train_data_transformed,
+  method = "naive_bayes",
+  trControl = trainControl,
+  tuneGrid = tuneGrid,
+  metric = "Accuracy"
+)
+
+# Imprimir los resultados del modelo tuneado
+print(model_nb_tuned)
+
+```
+
+```{r}
+library(caret)
+
+# Definir una función de resumen personalizada usando funciones disponibles en caret
+multiClassSummaryCustom <- function(data, lev = NULL, model = NULL) {
+  # ConfMatrix es una matriz de confusión detallada
+  confMatrix <- confusionMatrix(data$pred, data$obs, mode = "everything", dnn = c("Prediction", "Reference"))
+
+  # Extraer las métricas de precisión, recall y F1 de la matriz de confusión
+  precision <- confMatrix$byClass['Precision']
+  recall <- confMatrix$byClass['Recall']
+  F1 <- 2 * (precision * recall) / (precision + recall)  # Calculando F1-score
+
+  # Calculando la precisión global
+  accuracy <- sum(diag(confMatrix$table)) / sum(confMatrix$table)
+  
+  out <- c(accuracy, precision, recall, F1)
+  names(out) <- c("Accuracy", "Precision", "Recall", "F1")
+  out
+}
+
+# Configurar el control de entrenamiento
+trainControl <- trainControl(
+  method = "cv",
+  number = 10,
+  savePredictions = "final",
+  classProbs = TRUE,  # Solo necesario si planeas usar las probabilidades de clase
+  summaryFunction = multiClassSummaryCustom
+)
+
+# Configuración de la rejilla de tunning
+tuneGrid <- expand.grid(
+  laplace = seq(0, 5, by = 1),
+  usekernel = c(TRUE, FALSE),
+  adjust = seq(0.5, 2, by = 0.5)
+)
+
+set.seed(123)
+modelo_nb_tuned <- train(
+  consumoCat ~ .,
+  data = train_data_transformed,
+  method = "naive_bayes",
+  trControl = trainControl,
+  tuneGrid = tuneGrid,
+  metric = "Accuracy"
+)
+
+# Mostrar los resultados del tunning
+print(modelo_nb_tuned)
+
+
+```
