@@ -145,3 +145,20 @@ ggplot(as.data.frame(conf_matrix$table), aes(x = Reference, y = Prediction, fill
 
 
 La matríz al final nos confirma el análisis realizado en el inciso anterior, realmente la clasificación con más problemas es la estándar. Pero ahora con la matríz podemos ver como es que esta clasificación se está realizando. Resulta que la clase estándar por lo general se clasifica de manera erronea como barata. Realmente fueron pocas las casas estándar que fueron calificadas como caras. Viendo la diagonal, en este caso de esquina inferior izquierda a esquna superior derecha por la posición de los labels en el gráfico, realmente la clasificación de casas baratas y caras fueron bastante exitosas y tienen un error pequeño. El color azul fuerte junto con el número nos lo confirma (agregado a las métricas analizidas anteriormente). La matriz es muy importante para analizar errores de manera visual y conocer específicamente en que parte es que el modelo falló y como falló. Ahora lo que corresponde es mejorar el módelo ajustando variables, eliminando variables o bien tuneando hiperparámetros para mejorar el desempeño. 
+
+# 7 Analice el modelo. ¿Cree que pueda estar sobreajustado?
+
+Ahora bien aunque los resultados fueron buenos para 2 de las 3 posibles claisificaciones, hay que tener cuidado de que no haya overfitting. Para poder evaluar si los datos están sobre ajustados podemos probar a hacer no solo predicciones con el set de datos de prueba, sino también el mismo set de datos de entrenamiento. Si los resultados de hacer predicciones con el mismo set de entrenamiento resultan ser mejores, quiere decir que el modelo no está generalizando correctamente y tiene tendencia a clasificar mejor los datos parecidos al set de de datos de entrenamiento.
+
+``` {r has_overfitting? }
+#accuracy conjunto de entrenamiento
+train_predictions <- predict(model, train_data)
+train_accuracy <- sum(train_predictions == train_data$consumoCat) / length(train_predictions)
+print(paste("Precisión en entrenamiento:", train_accuracy))
+
+# accuracy conjunto de prueba
+test_accuracy <- conf_matrix$overall['Accuracy']
+print(paste("Precisión en prueba:", test_accuracy))
+```
+
+Como se puede ver al final realmente la diferencia entre las predicciones usando el set de testing y el set de entrenamiento no varía casi nada. Esto quiere decir que el modelo realmente no tiene overfitting y con datos distintos da resultados bastante similares. El modelo no tiene sobreajuste pero seguramente hubiera sido necesario hacer más procesamiento de las variables para que fuera mejor clasificando los 3 distintos tipos de casa y no solo 2 (las caras y las baratas).

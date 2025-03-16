@@ -539,6 +539,35 @@ específicamente en que parte es que el modelo falló y como falló. Ahora
 lo que corresponde es mejorar el módelo ajustando variables, eliminando
 variables o bien tuneando hiperparámetros para mejorar el desempeño.</p>
 </div>
+<div id="analice-el-modelo.-cree-que-pueda-estar-sobreajustado" class="section level1">
+<h1>7 Analice el modelo. ¿Cree que pueda estar sobreajustado?</h1>
+<p>Ahora bien aunque los resultados fueron buenos para 2 de las 3
+posibles claisificaciones, hay que tener cuidado de que no haya
+overfitting. Para poder evaluar si los datos están sobre ajustados
+podemos probar a hacer no solo predicciones con el set de datos de
+prueba, sino también el mismo set de datos de entrenamiento. Si los
+resultados de hacer predicciones con el mismo set de entrenamiento
+resultan ser mejores, quiere decir que el modelo no está generalizando
+correctamente y tiene tendencia a clasificar mejor los datos parecidos
+al set de de datos de entrenamiento.</p>
+<pre class="r"><code>#accuracy conjunto de entrenamiento
+train_predictions &lt;- predict(model, train_data)
+train_accuracy &lt;- sum(train_predictions == train_data$consumoCat) / length(train_predictions)
+print(paste(&quot;Precisión en entrenamiento:&quot;, train_accuracy))</code></pre>
+<pre><code>## [1] &quot;Precisión en entrenamiento: 0.676787463271303&quot;</code></pre>
+<pre class="r"><code># accuracy conjunto de prueba
+test_accuracy &lt;- conf_matrix$overall[&#39;Accuracy&#39;]
+print(paste(&quot;Precisión en prueba:&quot;, test_accuracy))</code></pre>
+<pre><code>## [1] &quot;Precisión en prueba: 0.671981776765376&quot;</code></pre>
+<p>Como se puede ver al final realmente la diferencia entre las
+predicciones usando el set de testing y el set de entrenamiento no varía
+casi nada. Esto quiere decir que el modelo realmente no tiene
+overfitting y con datos distintos da resultados bastante similares. El
+modelo no tiene sobreajuste pero seguramente hubiera sido necesario
+hacer más procesamiento de las variables para que fuera mejor
+clasificando los 3 distintos tipos de casa y no solo 2 (las caras y las
+baratas).</p>
+</div>
 
 
 
