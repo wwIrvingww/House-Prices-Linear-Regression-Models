@@ -145,3 +145,55 @@ ggplot(as.data.frame(conf_matrix$table), aes(x = Reference, y = Prediction, fill
 
 
 La matríz al final nos confirma el análisis realizado en el inciso anterior, realmente la clasificación con más problemas es la estándar. Pero ahora con la matríz podemos ver como es que esta clasificación se está realizando. Resulta que la clase estándar por lo general se clasifica de manera erronea como barata. Realmente fueron pocas las casas estándar que fueron calificadas como caras. Viendo la diagonal, en este caso de esquina inferior izquierda a esquna superior derecha por la posición de los labels en el gráfico, realmente la clasificación de casas baratas y caras fueron bastante exitosas y tienen un error pequeño. El color azul fuerte junto con el número nos lo confirma (agregado a las métricas analizidas anteriormente). La matriz es muy importante para analizar errores de manera visual y conocer específicamente en que parte es que el modelo falló y como falló. Ahora lo que corresponde es mejorar el módelo ajustando variables, eliminando variables o bien tuneando hiperparámetros para mejorar el desempeño. 
+
+##Usando validacion cruzada
+Haga un modelo usando validación cruzada, compare los resultados de este con los del
+modelo anterior. ¿Cuál funcionó mejor?
+
+# Definir el control de la validación cruzada (k-fold, por ejemplo k=10)
+```{r preparation_data}
+ctrl <- trainControl(method = "cv",  # Método de validación cruzada
+                     number = 5,    # Número de folds (k=10)
+                     classProbs = TRUE,  # Para obtener probabilidades
+                     summaryFunction = multiClassSummary)  # Métricas para clasificación multiclase
+
+
+#Manejo de  NAN
+na_columns_train <- colnames(train_data)[colSums(is.na(train_data)) > 0]
+print("Columnas con NA en train_data:")
+print(na_columns_train)
+
+na_columns_test <- colnames(test_data)[colSums(is.na(test_data)) > 0]
+
+train_data <- train_data[, colSums(is.na(train_data)) < nrow(train_data)]
+
+test_data <- test_data[, colSums(is.na(test_data)) < nrow(test_data)]
+
+train_data <- train_data %>% mutate(across(where(is.character), as.factor))
+test_data <- test_data %>% mutate(across(where(is.character), as.factor))
+
+impute_mode <- function(x) {
+  if (is.factor(x)) {
+    mode_value <- names(sort(table(x), decreasing = TRUE)[1])
+    ifelse(is.na(x), mode_value, as.character(x))
+  } else {
+    x
+  }
+}
+train_data <- train_data %>% mutate(across(where(is.factor), ~ impute_mode(.)))
+test_data <- test_data %>% mutate(across(where(is.factor), ~ impute_mode(.)))
+```
+
+```{r}
+# Entrenar el modelo con validación cruzada
+set.seed(123)  # Fijar semilla para reproducibilidad
+model_cv <- train(consumoCat ~ .,           # Fórmula del modelo
+                  data = train_data,        # Datos de entrenamiento
+                  method = "naive_bayes",   # Método: Naive Bayes
+                  trControl = ctrl,         # Control de validación cruzada
+                  metric = "Accuracy")      # Métrica a optimizar (precisión)
+
+# Ver los resultados de la validación cruzada
+print(model_cv)
+
+```
