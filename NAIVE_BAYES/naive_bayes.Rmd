@@ -11,6 +11,7 @@ library(knitr)
 library(readr)
 library(caret)
 library(e1071)
+library(dplyr)
 ```
 
 A continuacion se construye un modelo de regresion lineal utilizando Naive Bayes.
@@ -19,7 +20,16 @@ train_data <- read_csv("train_final.csv")
 test_data <- read.csv("test_final.csv")
 ```
 
-```{r discretize, echo=FALSE}
+Eliminamos las columnas que tambien se removieron en el otro modelo, dado que causaban problemas y no eran relevantes.
+
+```{r remove_columns, include=FALSE}
+train_data <- train_data %>% select(-Condition2, -RoofMatl, -Exterior2nd, -Electrical)
+test_data <- test_data %>% select(-Condition2, -RoofMatl, -Exterior2nd, -Electrical)
+```
+
+
+```{r discretize, include=FALSE}
+# Discretizar 'SalePrice' en el conjunto de entrenamiento
 train_data$SalePriceCat <- cut(train_data$SalePrice,
                                breaks = c(min(train_data$SalePrice),
                                           quantile(train_data$SalePrice, probs = 1/3),
@@ -28,8 +38,74 @@ train_data$SalePriceCat <- cut(train_data$SalePrice,
                                labels = c("barata", "estandar", "cara"),
                                include.lowest = TRUE)
 
+# Discretizar 'SalePrice' en el conjunto de prueba
+test_data$SalePriceCat <- cut(test_data$SalePrice, 
+                              breaks = c(min(train_data$SalePrice), 
+                                         quantile(train_data$SalePrice, probs = 1/3), 
+                                         quantile(train_data$SalePrice, probs = 2/3),
+                                         max(train_data$SalePrice)),
+                              labels = c("barata", "estandar", "cara"),
+                              include.lowest = TRUE)
+
+
 ```
 
-```{r naive_model, echo=FALSE}
-modelo <- naiveBayes(SalePriceCat ~ ., data = train_data)
+## Puntos de corte
+Utilizamos los mismos puntos de corte que para los otros modelos
+```{r cut_points, echo=FALSE}
+cut_points <- quantile(train_data$SalePrice, probs = c(0, 1/3, 2/3, 1))
+print(cut_points)
+table(train_data$SalePriceCat)
 ```
+Se genera el  modelo utilizando naive bayes.
+```{r naive_model, echo=FALSE}
+
+modelo_nb <- naiveBayes(SalePriceCat ~ ., data = train_data)
+
+predicciones_cat <- predict(modelo_nb, newdata = test_data)
+
+intervalos <- cut(train_data$SalePrice,
+                  breaks = c(min(train_data$SalePrice),
+                             quantile(train_data$SalePrice, probs = 1/3),
+                             quantile(train_data$SalePrice, probs = 2/3),
+                             max(train_data$SalePrice)),
+                  include.lowest = TRUE)
+
+valores_medios <- tapply(train_data$SalePrice, intervalos, mean)
+predicciones_numericas <- valores_medios[predicciones_cat]
+```
+
+##Probando el modelo con data
+A continuacion se pone a prueba el modelo entrenado y se analizan sus resultdos a traves de una matriz de confusion.
+```{r predictions_test, echo=FALSE}
+
+mae <- mean(abs(test_data$SalePrice - predicciones_numericas))
+mse <- mean((test_data$SalePrice - predicciones_numericas)^2)
+r2 <- cor(test_data$SalePrice, predicciones_numericas)^2
+
+cat("Error Medio Absoluto (MAE):", mae, "\n")
+cat("Error Cuadrático Medio (MSE):", mse, "\n")
+cat("Coeficiente de Determinación (R²):", r2, "\n")
+
+```
+Al igual que en modelos anteriores, se removió las columnas Condition2, RoofMatl, Exterior2nd, Electrical. Ya que el modelo de datos de test existían valores que el de training no estaban presentes, por lo que al hacer la ejecución del modelo nos encontrábamos con errores. Esta decisión se respalda con el análisis exploratorio en donde se concluyó que no aportan información que valga la pena mantener.  
+Con respecto a las métricas de regresión obtenidas, podemos observar los siguientes puntos:  
+
+El Error Medio Absoluto (MAE) tiene un valoor de *39054.95* lo que indica que en promedio, las predicciones del modelo se desvían aproximadamente $39,054.95 del valor real de SalePrice. Aunque este error no es extremadamente alto, sugiere que el modelo tiene un margen de mejora significativo.  
+El MSE tiene un valor de *3,131,943,354* en este caso el valor es bastante alto. Esto indica que el modelo tiene dificultades para predecir con precisión los valores extremos de SalePrice, lo cual es común en modelos que no están diseñados específicamente para regresión, como es el caso de Naive Bayes.  
+Por último el valor de R^2 nos indica que el modelo explica aproximadamente el *54.24%* de la variabilidad de la variable SalePrice. Aunque este valor no es bajo, tampoco es lo suficientemente alto como para considerar que el modelo es altamente predictivo. En comparación con modelos como la regresión lineal o los árboles de regresión, este valor sea es inferior, lo que sugiere que Naive Bayes no es el método más adecuado para este tipo de problema.
+
+### Comparacion con otros modelos 
+
+Al comparar el desempeño de los modelos de regresión lineal, árbol de regresión y Naive Bayes para predecir el precio de las casas, podemos realizar algunas observaciones para determinar cuál de ellos rindió mejor.
+
+1. **Modelo de Regresión Lineal**: Este modelo demostró que variables como OverallQual y GrLivArea están fuertemente correlacionadas con SalePrice. Aunque el RMSE fue considerable logró explicar aproximadamente el 79.25% de la variabilidad en SalePrice, evidenciado por un R-squared ajustado de 0.783.  
+
+2. **Árbol de Regresión**: Al ajustar la profundidad del árbol de regresión, se observó que el RMSE se mantuvo constante en torno a 46,666.83 para profundidades de 3 o más. Esto sugiere que incrementar la profundidad más allá de este punto no mejora la precisión del modelo. El RMSE como porcentaje se situó en un 25.73%, lo cual es alto considerando los valores monetarios en juego.
+
+3. **Naive Bayes para Clasificación (adaptado para regresión)**: El modelo de Naive Bayes, aunque adaptado para regresión mediante la discretización de SalePrice, mostró un rendimiento inferior en comparación con los otros dos modelos. Estos resultados indican que el modelo tiene dificultades para predecir con precisión los valores de SalePrice. El MAE sugiere que, en promedio, las predicciones se desvían aproximadamente $39,054.95 del valor real, lo cual es un error considerable.Además, el R² de 0.5424 indica que el modelo explica solo el 54.24% de la variabilidad en SalePrice, un valor significativamente más bajo que el obtenido por la regresión lineal. 
+
+Entonces,podemos decir que el **modelo de regresión lineal** se presenta como el más equilibrado en términos de precisión y capacidad de interpretación para este conjunto de datos. A pesar de un RMSE elevado, el alto R-squared ajustado indica que el modelo capta bien la variabilidad en los precios de las casas y ofrece insights claros sobre las variables más relevantes.  Por otro lado, el modelo de Naive Bayes adaptado para regresión tuvo el peor rendimiento, lo que confirma que no es el método más adecuado para este tipo de problema.
+
+
+Para predicción del precio de las casas, el modelo de regresión lineal se establece como la herramienta más robusta y efectiva en este análisis, ofreciendo un equilibrio entre complejidad y rendimiento.

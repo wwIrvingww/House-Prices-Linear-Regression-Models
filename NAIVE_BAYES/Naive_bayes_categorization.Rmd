@@ -15,6 +15,8 @@ library(dplyr)
 library(forcats)
 library(knitr)
 library(e1071)
+library(recipes)
+
 ```
 
 ```{r load_data, include=FALSE}
@@ -162,3 +164,149 @@ print(paste("Precisión en prueba:", test_accuracy))
 ```
 
 Como se puede ver al final realmente la diferencia entre las predicciones usando el set de testing y el set de entrenamiento no varía casi nada. Esto quiere decir que el modelo realmente no tiene overfitting y con datos distintos da resultados bastante similares. El modelo no tiene sobreajuste pero seguramente hubiera sido necesario hacer más procesamiento de las variables para que fuera mejor clasificando los 3 distintos tipos de casa y no solo 2 (las caras y las baratas).
+
+##Usando validacion cruzada
+Haga un modelo usando validación cruzada, compare los resultados de este con los del
+modelo anterior. ¿Cuál funcionó mejor?
+
+
+```{r, include=FALSE}
+ctrl <- trainControl(method = "cv",
+                     number = 10,
+                     savePredictions = "final",
+                     classProbs = TRUE,
+                     summaryFunction = defaultSummary)
+
+print("Control de validación cruzada configurado con éxito.")
+```
+
+```{r, include=FALSE}
+train_data <- read.csv("train_final.csv")
+test_data <- read.csv("test_final.csv")
+
+print(head(train_data))
+print(head(test_data))
+
+print(summary(train_data))
+print(summary(test_data))
+
+if("YourCategoricalVariable" %in% names(train_data) && any(!is.na(train_data$YourCategoricalVariable))) {
+    train_data$YourCategoricalVariable <- factor(train_data$YourCategoricalVariable)
+}
+if("YourCategoricalVariable" %in% names(test_data) && any(!is.na(test_data$YourCategoricalVariable))) {
+    test_data$YourCategoricalVariable <- factor(test_data$YourCategoricalVariable)
+}
+
+if("YourNumericVariable" %in% names(train_data)) {
+    train_data$YourNumericVariable <- ifelse(is.na(train_data$YourNumericVariable), 
+                                             mean(train_data$YourNumericVariable, na.rm = TRUE), 
+                                             train_data$YourNumericVariable)
+}
+
+print(str(train_data))
+print(str(test_data))
+
+
+```
+
+```{r echo=FALSE}
+data_recipe <- recipe(~ ., data = train_data) %>%
+  # Manejar nuevos niveles en variables categóricas
+  step_novel(all_nominal(), -all_outcomes()) %>%
+  # Eliminar variables con variación cero
+  step_zv(all_predictors()) %>%
+  # Imputación de valores NA para variables numéricas
+  step_impute_median(all_numeric(), -all_outcomes()) %>%
+  # Imputación de valores NA para variables categóricas
+  step_impute_mode(all_nominal(), -all_outcomes()) %>%
+  # Crear dummies para variables categóricas
+  step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE) %>%
+  # Escalar y centrar variables numéricas
+  step_scale(all_numeric()) %>%
+  step_center(all_numeric())
+
+prepped_data <- prep(data_recipe, training = train_data)
+
+train_data_transformed <- bake(prepped_data, new_data = NULL)
+
+test_data_transformed <- bake(prepped_data, new_data = test_data)
+
+print(str(train_data_transformed))
+print(str(test_data_transformed))
+
+```
+
+```{r echo=FALSE}
+train_data$consumoCat <- cut(train_data$SalePrice,
+                             breaks = breaks,
+                             labels = c("barata", "estandar", "cara"),
+                             include.lowest = TRUE)
+train_data$consumoCat <- as.factor(train_data$consumoCat)
+
+test_data$consumoCat <- cut(test_data$SalePrice,
+                            breaks = breaks,
+                            labels = c("barata", "estandar", "cara"),
+                            include.lowest = TRUE)
+test_data$consumoCat <- as.factor(test_data$consumoCat)
+
+if(!identical(levels(train_data$consumoCat), levels(test_data$consumoCat))) {
+  all_levels <- union(levels(train_data$consumoCat), levels(test_data$consumoCat))
+  train_data$consumoCat <- factor(train_data$consumoCat, levels = all_levels)
+  test_data$consumoCat <- factor(test_data$consumoCat, levels = all_levels)
+}
+
+prepped_data <- prep(data_recipe, training = train_data)
+
+train_data_transformed <- bake(prepped_data, new_data = NULL)
+
+test_data_transformed <- bake(prepped_data, new_data = test_data)
+
+train_data_transformed$consumoCat <- train_data$consumoCat
+test_data_transformed$consumoCat <- test_data$consumoCat
+
+set.seed(123)
+model_nb <- train(
+  consumoCat ~ .,
+  data = train_data_transformed,
+  method = "naive_bayes",
+  trControl = train_control,
+  metric = "Accuracy"
+)
+
+
+print(model_nb)
+```
+
+
+```{r}
+
+predictions <- predict(model_nb, newdata = test_data_transformed)
+
+conf_matrix <- confusionMatrix(predictions, test_data_transformed$consumoCat)
+
+print(conf_matrix)
+
+plot(conf_matrix$table, col = conf_matrix$byClass, main = "Matriz de Confusión")
+
+accuracy <- sum(diag(conf_matrix$table)) / sum(conf_matrix$table)
+sensitivity <- conf_matrix$byClass['Sensitivity']
+specificity <- conf_matrix$byClass['Specificity']
+
+cat("Accuracy:", accuracy, "\n")
+cat("Sensitivity:", sensitivity, "\n")
+cat("Specificity:", specificity, "\n")
+
+
+```
+Los resultados de la matriz de confusión y las estadísticas del modelo Naive Byaes son bastantes decepcionantes, el peor de todos los modelos hasta ahora.  
+Su *precisión* es del *55.55%*, lo cual es ligeramente mejor que el azar, ya que la taza del *No information Rate* es de *33.94%*.  
+En cuanto a la sensibilidad y especifidad es muy alta para la clase `cara` con un valor de *95.3%*, pero es extremedamante baja para la clase `barata`, con un 0. Lo que nos dice que el modelo clasifica correctamente las casas caras, pero falla por completo al identificar las baratas.  
+El valor predicitivo positivo puede considerarse alto para la clase `cara` con un valor de 76.34%  lo que indica que cuando el modelo predice que una vivienda es cara, es probable que así sea. Sin embargo, el VPP para la clase `estandar` es de solo 40.32%, lo que muestra una eficiencia limitada en estas predicciones.  
+La ausencia de predicciones para la clase "barata" sugiere que el modelo puede estar sesgado hacia las otras dos categorías, posiblemente debido a un desbalance en los datos de entrenamiento.  
+El valaor *kappa de 0.3342* sugiere que existe mucho margen de mejora.
+
+##¿Cuál es mejor?
+El primero modelo (el anterior) muestra un rendimiento superior en términos de precisión general y balance entre sensibilidad y especificidad en comparación con el de validación cruzada.  
+El de validación cruzada falló por completo al detectar la categoría `barata`, mientras que el segundo modelo obtuvo una sensibilidad de 99.34% casi perecta, lo cual también es un poco preocupante.  
+El balance Acurracy en el modelo anteior es superior con un 82.31% para la clase `barata` y 85.37 para `cara` lo que demuestra un equilibrio a la hora de detectar verdaeres positvos y negativos por categoria.  
+El valor de kappa en el modelo anterior fue de 0.5047 sugiera ser mejor que la aleatoriedad y es además superior a la del modelo de validación cruzada que apenas alcanzó un 0.3342
