@@ -92,7 +92,7 @@ Al igual que en modelos anteriores, se removió las columnas Condition2, RoofMat
 Con respecto a las métricas de regresión obtenidas, podemos observar los siguientes puntos:  
 
 El Error Medio Absoluto (MAE) tiene un valoor de *39054.95* lo que indica que en promedio, las predicciones del modelo se desvían aproximadamente $39,054.95 del valor real de SalePrice. Aunque este error no es extremadamente alto, sugiere que el modelo tiene un margen de mejora significativo.  
-El MSE tiene un valor de *3,131,943,354* en este caso el valor es bastante alto. Esto indica que el modelo tiene dificultades para predecir con precisión los valores extremos de SalePrice, lo cual es común en modelos que no están diseñados específicamente para regresión, como es el caso de Naive Bayes.  
+El MSE tiene un valor de 3,131,943,354 en este caso el valor es bastante alto. SI sacamos la raíz cuadrada de este error se obtiene un total de error de 55,963.76, ósea casi $56,000.00 dólares. Esto indica que el modelo tiene dificultades para predecir con precisión los valores extremos de SalePrice, lo cual es común en modelos que no están diseñados específicamente para regresión, como es el caso de Naive Bayes.  
 Por último el valor de R^2 nos indica que el modelo explica aproximadamente el *54.24%* de la variabilidad de la variable SalePrice. Aunque este valor no es bajo, tampoco es lo suficientemente alto como para considerar que el modelo es altamente predictivo. En comparación con modelos como la regresión lineal o los árboles de regresión, este valor sea es inferior, lo que sugiere que Naive Bayes no es el método más adecuado para este tipo de problema.
 
 ### Comparacion con otros modelos 

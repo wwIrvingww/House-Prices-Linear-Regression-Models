@@ -150,6 +150,15 @@ if (!"consumoCat" %in% names(test_data)) {
 
   confusion_matrix <- confusionMatrix(predicciones, test_data$consumoCat)
   print(confusion_matrix)
+  
+  ggplot(as.data.frame(confusion_matrix$table), aes(x = Reference, y = Prediction, fill = Freq)) +
+    geom_tile() +
+    geom_text(aes(label = Freq), color = "white") +
+    scale_fill_gradient(low = "lightblue", high = "darkblue") +
+    labs(title = "Matriz de Confusión",
+         x = "Valor Real",
+         y = "Predicción") +
+    theme_minimal()
 }
 
 ```
