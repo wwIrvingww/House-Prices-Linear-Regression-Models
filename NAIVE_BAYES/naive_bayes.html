@@ -401,7 +401,8 @@ alto como para considerar que el modelo es altamente predictivo. En
 comparación con modelos como la regresión lineal o los árboles de
 regresión, este valor sea es inferior, lo que sugiere que Naive Bayes no
 es el método más adecuado para este tipo de problema.</p>
-<p>##Comparacion con otros modelos</p>
+<div id="comparacion-con-otros-modelos" class="section level3">
+<h3>Comparacion con otros modelos</h3>
 <p>Al comparar el desempeño de los modelos de regresión lineal, árbol de
 regresión y Naive Bayes para predecir el precio de las casas, podemos
 realizar algunas observaciones para determinar cuál de ellos rindió
@@ -418,15 +419,14 @@ torno a 46,666.83 para profundidades de 3 o más. Esto sugiere que
 incrementar la profundidad más allá de este punto no mejora la precisión
 del modelo. El RMSE como porcentaje se situó en un 25.73%, lo cual es
 alto considerando los valores monetarios en juego.</p></li>
-<li><p><strong>Naive Bayes para Clasificación (adaptado para
-regresión)</strong>: El modelo de Naive Bayes, aunque adaptado para
-regresión mediante la discretización de SalePrice, mostró un rendimiento
-inferior en comparación con los otros dos modelos. Estos resultados
-indican que el modelo tiene dificultades para predecir con precisión los
-valores de SalePrice. El MAE sugiere que, en promedio, las predicciones
-se desvían aproximadamente $39,054.95 del valor real, lo cual es un
-error considerable.Además, el R² de 0.5424 indica que el modelo explica
-solo el 54.24% de la variabilidad en SalePrice, un valor
+<li><p>**Naive Bayes para Clasificación*: El modelo de Naive Bayes,
+aunque adaptado para regresión mediante la discretización de SalePrice,
+mostró un rendimiento inferior en comparación con los otros dos modelos.
+Estos resultados indican que el modelo tiene dificultades para predecir
+con precisión los valores de SalePrice. El MAE sugiere que, en promedio,
+las predicciones se desvían aproximadamente $39,054.95 del valor real,
+lo cual es un error considerable.Además, el R² de 0.5424 indica que el
+modelo explica solo el 54.24% de la variabilidad en SalePrice, un valor
 significativamente más bajo que el obtenido por la regresión
 lineal.</p></li>
 </ol>
@@ -442,6 +442,55 @@ problema.</p>
 <p>Para predicción del precio de las casas, el modelo de regresión
 lineal se establece como la herramienta más robusta y efectiva en este
 análisis, ofreciendo un equilibrio entre complejidad y rendimiento.</p>
+<p>##Tunning</p>
+<pre><code>## Confusion Matrix and Statistics
+## 
+##           Reference
+## Prediction 1 2 3
+##          1 0 0 0
+##          2 0 0 0
+##          3 0 0 0
+## 
+## Overall Statistics
+##                                   
+##                Accuracy : NaN     
+##                  95% CI : (NA, NA)
+##     No Information Rate : NA      
+##     P-Value [Acc &gt; NIR] : NA      
+##                                   
+##                   Kappa : NaN     
+##                                   
+##  Mcnemar&#39;s Test P-Value : NA      
+## 
+## Statistics by Class:
+## 
+##                      Class: 1 Class: 2 Class: 3
+## Sensitivity                NA       NA       NA
+## Specificity                NA       NA       NA
+## Pos Pred Value             NA       NA       NA
+## Neg Pred Value             NA       NA       NA
+## Prevalence                NaN      NaN      NaN
+## Detection Rate            NaN      NaN      NaN
+## Detection Prevalence      NaN      NaN      NaN
+## Balanced Accuracy          NA       NA       NA</code></pre>
+<p>La precisión general es del 70.87% un buen porcentaje, pero no lo
+suficiente para ponerse encima de los otros. Este número aún indica un
+margen de mejora. Las sensibilidades de las clases muestran un valor
+decente, a excepción de la estándar, de nuevo es la que más problemas le
+trae el modelo ya que alcanza apenas una sensibilidad del 34.25%. La
+especidad es alta en las categorías <code>estandar</code> y
+<code>cara</code> (93.10% y 95.12%, respectivamente), lo que significa
+que el modelo es muy bueno evitando falsos positivos en estas
+categorías. Sin embargo, la especificidad para la categoría barata es
+más baja (68.47%), lo que indica que hay un número considerable de
+falsos positivos.<br />
+En general, podemos observar un buen redimiento on una buena capacidad
+para identificar casas baratas y caras, pero con problemas
+significativos en la categoría estándar. La alta cantidad de falsos
+positivos en la categoría barata y la baja sensibilidad en la categoría
+estándar son preocupantes y podrían ser áreas de enfoque para la mejora
+del modelo.</p>
+</div>
 </div>
 
 

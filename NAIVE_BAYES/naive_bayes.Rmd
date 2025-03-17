@@ -92,7 +92,7 @@ Al igual que en modelos anteriores, se removió las columnas Condition2, RoofMat
 Con respecto a las métricas de regresión obtenidas, podemos observar los siguientes puntos:  
 
 El Error Medio Absoluto (MAE) tiene un valoor de *39054.95* lo que indica que en promedio, las predicciones del modelo se desvían aproximadamente $39,054.95 del valor real de SalePrice. Aunque este error no es extremadamente alto, sugiere que el modelo tiene un margen de mejora significativo.  
-El MSE tiene un valor de 3,131,943,354 en este caso el valor es bastante alto. SI sacamos la raíz cuadrada de este error se obtiene un total de error de 55,963.76, ósea casi $56,000.00 dólares. Esto indica que el modelo tiene dificultades para predecir con precisión los valores extremos de SalePrice, lo cual es común en modelos que no están diseñados específicamente para regresión, como es el caso de Naive Bayes.  
+El MSE tiene un valor de *3,131,943,354* en este caso el valor es bastante alto. Esto indica que el modelo tiene dificultades para predecir con precisión los valores extremos de SalePrice, lo cual es común en modelos que no están diseñados específicamente para regresión, como es el caso de Naive Bayes.  
 Por último el valor de R^2 nos indica que el modelo explica aproximadamente el *54.24%* de la variabilidad de la variable SalePrice. Aunque este valor no es bajo, tampoco es lo suficientemente alto como para considerar que el modelo es altamente predictivo. En comparación con modelos como la regresión lineal o los árboles de regresión, este valor sea es inferior, lo que sugiere que Naive Bayes no es el método más adecuado para este tipo de problema.
 
 ### Comparacion con otros modelos 
@@ -110,4 +110,77 @@ Entonces,podemos decir que el **modelo de regresión lineal** se presenta como e
 
 Para predicción del precio de las casas, el modelo de regresión lineal se establece como la herramienta más robusta y efectiva en este análisis, ofreciendo un equilibrio entre complejidad y rendimiento.
 
+
+
 ##Tunning
+```{r nan_values, include=FALSE}
+threshold <- 0.80
+cols_to_remove <- sapply(train_data, function(x) mean(is.na(x))) > threshold
+cols_to_remove <- names(cols_to_remove[cols_to_remove])
+
+train_data <- train_data %>% select(-one_of(cols_to_remove))
+test_data <- test_data %>% select(-one_of(cols_to_remove))
+
+train_data <- train_data %>%
+  mutate_if(is.numeric, ~ifelse(is.na(.), median(., na.rm = TRUE), .))
+
+train_data <- train_data %>%
+  mutate_if(is.factor, ~ifelse(is.na(.), as.character(get_mode(.)), .))
+
+get_mode <- function(v) {
+  uniqv <- unique(na.omit(v))
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+sum_na_clean <- sapply(train_data, function(x) sum(is.na(x)))
+
+head(train_data)
+
+train_data <- na.omit(train_data)
+test_data <- na.omit(test_data)
+
+
+```
+
+
+```{r search_best_values, include=FALSE}
+train_data$SalePriceCat <- as.factor(train_data$SalePriceCat)
+
+tuneGrid <- expand.grid(.laplace = c(0, 0.5, 1),
+                        .usekernel = c(TRUE, FALSE),
+                        .adjust = c(0.5, 1, 2))
+
+trainControl <- trainControl(method = "cv", number = 10, savePredictions = "final")
+
+modelo_nb_tuned <- train(SalePriceCat ~ ., data = train_data,
+                         method = "naive_bayes",
+                         trControl = trainControl,
+                         tuneGrid = tuneGrid)
+
+print(modelo_nb_tuned)
+summary(modelo_nb_tuned)
+
+```
+
+```{r new_model, echo=FALSE}
+modelo_final_nb <- naiveBayes(SalePriceCat ~ ., data = train_data, laplace = 0, usekernel = TRUE, adjust = 0.5)
+
+predicciones_finales <- predict(modelo_final_nb, newdata = test_data, type = "class")
+
+if(all(is.na(predicciones_finales))) {
+  cat("No valid predictions were made. Check model training and data input.\n")
+}
+
+if(any(!is.na(predicciones_finales))) {
+  predicciones_finales <- factor(predicciones_finales, levels = levels(train_data$SalePriceCat))
+  test_data$SalePriceCat <- factor(test_data$SalePriceCat, levels = levels(train_data$SalePriceCat))
+  conf_matrix <- confusionMatrix(predicciones_finales, test_data$SalePriceCat)
+  print(conf_matrix)
+}
+
+
+```
+La precisión general es del 70.87% un buen porcentaje, pero no lo suficiente para ponerse encima de los otros. Este número aún indica un margen de mejora. Las sensibilidades de las clases muestran un valor decente, a excepción de la estándar, de nuevo es la que más problemas le trae el modelo ya que alcanza apenas una sensibilidad del 34.25%. 
+La especidad es alta en las categorías `estandar` y `cara` (93.10% y 95.12%, respectivamente), lo que significa que el modelo es muy bueno evitando falsos positivos en estas categorías. Sin embargo, la especificidad para la categoría barata es más baja (68.47%), lo que indica que hay un número considerable de falsos positivos.  
+En general, podemos observar un buen redimiento on una buena capacidad para identificar casas baratas y caras, pero con problemas significativos en la categoría estándar.  La alta cantidad de falsos positivos en la categoría barata y la baja sensibilidad en la categoría estándar son preocupantes y podrían ser áreas de enfoque para la mejora del modelo. 
+

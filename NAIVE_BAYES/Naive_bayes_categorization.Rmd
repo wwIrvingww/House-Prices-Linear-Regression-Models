@@ -81,7 +81,7 @@ print(puntos_de_corte)
 
 ```
 
-```{r variable_categrica}
+```{r variable_categrica, echo=FALSE}
 table(train_data$consumoCat)
 #quitar la variable respuesta anteriore del precio
 train_data <- train_data %>% select(-SalePrice)
@@ -96,7 +96,7 @@ Lo que hicimos fue discretizar la variable resspuesta de precio con cuantiles. E
 
 ## 5. Utilice los modelos con el conjunto de prueba y determine la eficiencia del algoritmo para predecir y clasificar. 
 
-```{r predict_and_test}
+```{r predict_and_test, echo=FALSE}
 # Realizar predicciones en el conjunto de prueba
 predictions <- predict(model, test_data)
 
@@ -129,7 +129,7 @@ Para tener un buen entendimiento de los resultados se realizaron las pruebas de 
 
 ## 6. Haga un análisis de la eficiencia del modelo de clasificación usando una matriz de confusión. Tenga en cuenta la efectividad, donde el algoritmo se equivocó más, donde se equivocó menos y la importancia que tienen los errores.
 
-```{r confusion_matrix}
+```{r confusion_matrix, echo=FALSE}
 # Evaluar el modelo
 conf_matrix <- confusionMatrix(predictions, test_data$consumoCat)
 print(conf_matrix)
@@ -152,7 +152,7 @@ La matríz al final nos confirma el análisis realizado en el inciso anterior, r
 
 Ahora bien aunque los resultados fueron buenos para 2 de las 3 posibles claisificaciones, hay que tener cuidado de que no haya overfitting. Para poder evaluar si los datos están sobre ajustados podemos probar a hacer no solo predicciones con el set de datos de prueba, sino también el mismo set de datos de entrenamiento. Si los resultados de hacer predicciones con el mismo set de entrenamiento resultan ser mejores, quiere decir que el modelo no está generalizando correctamente y tiene tendencia a clasificar mejor los datos parecidos al set de de datos de entrenamiento.
 
-``` {r has_overfitting? }
+``` {r has_overfitting?, echo=FALSE }
 #accuracy conjunto de entrenamiento
 train_predictions <- predict(model, train_data)
 train_accuracy <- sum(train_predictions == train_data$consumoCat) / length(train_predictions)
@@ -170,7 +170,7 @@ Haga un modelo usando validación cruzada, compare los resultados de este con lo
 modelo anterior. ¿Cuál funcionó mejor?
 
 
-```{r, include=FALSE}
+```{r configuration, include=FALSE}
 ctrl <- trainControl(method = "cv",
                      number = 10,
                      savePredictions = "final",
@@ -180,7 +180,7 @@ ctrl <- trainControl(method = "cv",
 print("Control de validación cruzada configurado con éxito.")
 ```
 
-```{r, include=FALSE}
+```{r cross, include=FALSE}
 train_data <- read.csv("train_final.csv")
 test_data <- read.csv("test_final.csv")
 
@@ -209,7 +209,7 @@ print(str(test_data))
 
 ```
 
-```{r echo=FALSE}
+```{r repair_data, echo=FALSE}
 data_recipe <- recipe(~ ., data = train_data) %>%
   # Manejar nuevos niveles en variables categóricas
   step_novel(all_nominal(), -all_outcomes()) %>%
@@ -236,7 +236,8 @@ print(str(test_data_transformed))
 
 ```
 
-```{r echo=FALSE}
+```{r model, echo=FALSE}
+breaks <- quantile(train_data$SalePrice, probs = c(0, 1/3, 2/3, 1), na.rm = TRUE)
 train_data$consumoCat <- cut(train_data$SalePrice,
                              breaks = breaks,
                              labels = c("barata", "estandar", "cara"),
@@ -278,7 +279,7 @@ print(model_nb)
 ```
 
 
-```{r}
+```{r testing_model, echo=FALSE}
 
 predictions <- predict(model_nb, newdata = test_data_transformed)
 
@@ -312,6 +313,7 @@ El balance Acurracy en el modelo anteior es superior con un 82.31% para la clase
 El valor de kappa en el modelo anterior fue de 0.5047 sugiera ser mejor que la aleatoriedad y es además superior a la del modelo de validación cruzada que apenas alcanzó un 0.3342
 
 ##Tunning
+
 ```{r nan_values, include=FALSE}
 threshold <- 0.80
 cols_to_remove <- sapply(train_data, function(x) mean(is.na(x))) > threshold
@@ -341,189 +343,56 @@ test_data <- na.omit(test_data)
 
 ```
 
-```{r}
-multiClassSummary <- function(data, lev = NULL, model = NULL) {
-  cm <- confusionMatrix(data$pred, data$obs, dnn = c('Prediction', 'Reference'))
-  accuracy <- cm$overall['Accuracy']
+```{r tunning_params, echo=FALSE}
 
-  # Evitar NaN cuando no hay predicciones para una clase
-  precision <- ifelse(is.nan(cm$byClass['Precision']), 0, cm$byClass['Precision'])
-  recall <- ifelse(is.nan(cm$byClass['Recall']), 0, cm$byClass['Recall'])
-  F1 <- ifelse(is.nan(cm$byClass['F1']), 0, cm$byClass['F1'])
+laplace_values <- c(0, 0.5, 1, 2)
 
-  # Devuelve un listado con todas las métricas
-  c(Accuracy = accuracy, Precision = mean(precision, na.rm = TRUE), Recall = mean(recall, na.rm = TRUE), F1 = mean(F1, na.rm = TRUE))
+evaluate_naive_bayes <- function(laplace_value) {
+  model <- naiveBayes(consumoCat ~ ., data = train_data, laplace = laplace_value)
+  predictions <- predict(model, test_data)
+  conf_matrix <- table(test_data$consumoCat, predictions)
+  accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+  return(c(Laplace = laplace_value, Accuracy = accuracy))
 }
-table(train_data_transformed$consumoCat)
+
+results <- sapply(laplace_values, evaluate_naive_bayes)
+
+print(data.frame(results))
 
 
 ```
 
 
-```{r}
-# Cargar las bibliotecas necesarias
-library(caret)
-library(doParallel)
-
-# Configurar el control de entrenamiento con paralelización y menos repeticiones
-registerDoParallel(cores = detectCores() - 1)  # Utiliza todos los núcleos disponibles menos uno
-
-# Definir una función de resumen personalizada para clasificación multiclase
-multiClassSummary <- function(data, lev = NULL, model = NULL) {
-  if (length(lev) != 3) stop("Your outcome has to have exactly three levels!")
-  
-  # Calcula la matriz de confusión y extrae las métricas
-  cm <- confusionMatrix(data$pred, data$obs)
-  accuracy <- cm$overall['Accuracy']
-  precision <- cm$byClass['Precision']
-  recall <- cm$byClass['Recall']
-  F1 <- cm$byClass['F1']
-  
-  # Promedio de Precision, Recall y F1 si se requiere manejar múltiples clases
-  mean_precision <- mean(precision, na.rm = TRUE)
-  mean_recall <- mean(recall, na.rm = TRUE)
-  mean_F1 <- mean(F1, na.rm = TRUE)
-  
-  # Devuelve un listado con todas las métricas
-  c(Accuracy = accuracy, Precision = mean_precision, Recall = mean_recall, F1 = mean_F1)
-}
-
-# Configuración del control de entrenamiento
-trainControl <- trainControl(
-  method = "cv",
-  number = 5,  # Reducción de pliegues
-  savePredictions = "final",
-  summaryFunction = multiClassSummary,
-  allowParallel = TRUE  # Permite la paralelización
-)
-
-# Rejilla de tunning simplificada
-tuneGrid <- expand.grid(
-  laplace = c(0, 1),  # Valores críticos
-  usekernel = c(TRUE, FALSE),
-  adjust = c(1)  # Valor central
-)
-
-# Asumiendo que 'train_data_transformed' es tu conjunto de datos ya procesado y listo para usar
-# Entrenar el modelo con la nueva configuración de resumen
-set.seed(123)  # Para asegurar reproducibilidad
-modelo_nb_tuned <- train(
-  consumoCat ~ .,
-  data = train_data_transformed,
-  method = "naive_bayes",
-  trControl = trainControl,
-  tuneGrid = tuneGrid,
-  metric = "Accuracy"
-)
-
-# Imprimir los resultados del modelo tuneado
-print(modelo_nb_tuned)
-
-```
+```{r testing_tunning, echo=FALSE}
 
 
-```{r}
-library(caret)
+# Entrenar el modelo Naive Bayes con el valor óptimo de Laplace
+optimal_laplace <- 0  # Este es el valor que encontraste como óptimo
+model_nb_optimal <- naiveBayes(consumoCat ~ ., data = train_data, laplace = optimal_laplace)
 
-# Definir una función de resumen personalizada para clasificación multiclase
-multiClassSummary <- function(data, lev = NULL, model = NULL) {
-  if (is.null(lev)) lev <- levels(data$obs)
-  if (length(lev) != 3) stop("Your outcome has to have exactly three levels!")
-  
-  # Calcula la matriz de confusión
-  cm <- confusionMatrix(data$pred, data$obs, mode = "prec_recall")
+# Realizar predicciones sobre el conjunto de prueba
+predictions_nb_optimal <- predict(model_nb_optimal, test_data)
 
-  # Extraer métricas
-  precision <- cm$byClass['Precision']
-  recall <- cm$byClass['Recall']
-  F1 <- cm$byClass['F1']
-  accuracy <- cm$overall['Accuracy']
-  
-  # Devolver todas las métricas
-  c(Accuracy = accuracy, Precision = mean(precision, na.rm = TRUE), Recall = mean(recall, na.rm = TRUE), F1 = mean(F1, na.rm = TRUE))
-}
+# Generar la matriz de confusión
+conf_matrix_optimal <- table(Predicted = predictions_nb_optimal, Actual = test_data$consumoCat)
 
-# Configuración del control de entrenamiento
-trainControl <- trainControl(
-  method = "cv",
-  number = 10,
-  savePredictions = "final",
-  summaryFunction = multiClassSummary,
-  classProbs = TRUE  # Si necesitas probabilidades de clase
-)
+# Imprimir la matriz de confusión
+print(conf_matrix_optimal)
 
-# Configuración de la rejilla de tunning
-tuneGrid <- expand.grid(
-  laplace = seq(0, 5, by = 1),
-  usekernel = c(TRUE, FALSE),
-  adjust = seq(0.5, 2, by = 0.5)
-)
+# Calcular la precisión del modelo
+accuracy_optimal <- sum(diag(conf_matrix_optimal)) / sum(conf_matrix_optimal)
+print(paste("Precisión del modelo:", accuracy_optimal))
 
-# Entrenar el modelo con la nueva función de resumen
-set.seed(123)
-model_nb_tuned <- train(
-  consumoCat ~ .,
-  data = train_data_transformed,
-  method = "naive_bayes",
-  trControl = trainControl,
-  tuneGrid = tuneGrid,
-  metric = "Accuracy"
-)
+# Si deseas calcular medidas adicionales como la precisión, recall y F1-score por clase,
+# puedes usar la librería caret para obtener un resumen más detallado
+# Asegurarte de que tanto las predicciones como los datos reales son factores y que tienen los mismos niveles
+levels(predictions_nb_optimal) <- union(levels(predictions_nb_optimal), levels(test_data$consumoCat))
+levels(test_data$consumoCat) <- levels(predictions_nb_optimal)
 
-# Imprimir los resultados del modelo tuneado
-print(model_nb_tuned)
-
-```
-
-```{r}
-library(caret)
-
-# Definir una función de resumen personalizada usando funciones disponibles en caret
-multiClassSummaryCustom <- function(data, lev = NULL, model = NULL) {
-  # ConfMatrix es una matriz de confusión detallada
-  confMatrix <- confusionMatrix(data$pred, data$obs, mode = "everything", dnn = c("Prediction", "Reference"))
-
-  # Extraer las métricas de precisión, recall y F1 de la matriz de confusión
-  precision <- confMatrix$byClass['Precision']
-  recall <- confMatrix$byClass['Recall']
-  F1 <- 2 * (precision * recall) / (precision + recall)  # Calculando F1-score
-
-  # Calculando la precisión global
-  accuracy <- sum(diag(confMatrix$table)) / sum(confMatrix$table)
-  
-  out <- c(accuracy, precision, recall, F1)
-  names(out) <- c("Accuracy", "Precision", "Recall", "F1")
-  out
-}
-
-# Configurar el control de entrenamiento
-trainControl <- trainControl(
-  method = "cv",
-  number = 10,
-  savePredictions = "final",
-  classProbs = TRUE,  # Solo necesario si planeas usar las probabilidades de clase
-  summaryFunction = multiClassSummaryCustom
-)
-
-# Configuración de la rejilla de tunning
-tuneGrid <- expand.grid(
-  laplace = seq(0, 5, by = 1),
-  usekernel = c(TRUE, FALSE),
-  adjust = seq(0.5, 2, by = 0.5)
-)
-
-set.seed(123)
-modelo_nb_tuned <- train(
-  consumoCat ~ .,
-  data = train_data_transformed,
-  method = "naive_bayes",
-  trControl = trainControl,
-  tuneGrid = tuneGrid,
-  metric = "Accuracy"
-)
-
-# Mostrar los resultados del tunning
-print(modelo_nb_tuned)
+# Generar la matriz de confusión utilizando la librería caret
+confusion_matrix <- confusionMatrix(as.factor(predictions_nb_optimal), as.factor(test_data$consumoCat))
+print(confusion_matrix)
 
 
 ```
+Tras utilizar los valores sugeridos por el tunning, pse observa como la precisión aumenta a un *75.56%*, la cual es la mayor acurracy obtenida hasta este momento, utilizando Naive Bayes. Es un buen porcentaje, pero sigue sin superar otros como el de árboles de decisión.Podemos ver como las sensbilidades tienen valores decentes, siendo estos  0.9667   0.5806   0.8068 para las baratas, estándar y caras. Como podemos observar,clase estándar sigue siendo la más difícil de clasificar lo que sugiere que un análisis más produndo sobre esta categoría o sobre la clasificación. En conclusión, aún con tunning sobre los modelos creados, nos dimos cuenta que Niave Bayes para este caso no es el modelos más óptimo, por lo que debería descartarse como modelo para clasificación en este proyecto.
