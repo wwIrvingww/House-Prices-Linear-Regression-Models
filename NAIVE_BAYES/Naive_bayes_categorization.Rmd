@@ -270,7 +270,7 @@ model_nb <- train(
   consumoCat ~ .,
   data = train_data_transformed,
   method = "naive_bayes",
-  trControl = train_control,
+  trControl = ctrl,
   metric = "Accuracy"
 )
 
