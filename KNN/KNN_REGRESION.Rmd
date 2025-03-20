@@ -18,6 +18,7 @@ library(caret)
 
 
 ```{r load_data, include=FALSE}
+#train data ya tiene el 70 y test_data el 30%
 train_data <- read.csv("train_final.csv")
 test_data <- read.csv("test_final.csv")
 ```
@@ -32,16 +33,129 @@ train_data <- train_data[, !names(train_data) %in% columnas_a_eliminar]
 test_data <- test_data[, !names(test_data) %in% columnas_a_eliminar]
 ```
 
-```{r process_empty}}
+```{r divide_and_process_empty}}
 numeric_columns <- train_data %>% select(where(is.numeric)) %>% names ()
+categorical_columns <- train_data %>% select(where(~ !is.numeric(.))) %>% names()
 
 preProc_num_train <- preProcess(train_data[, numeric_columns], method = "medianImpute")
 preProc_num_test <- preProcess(test_data[, numeric_columns], method = "medianImpute")
 
+train_data[, numeric_columns] <- predict(preProc_num_train, train_data[, numeric_columns])
+test_data[, numeric_columns] <- predict(preProc_num_test, test_data[, numeric_columns])
+
+
+niveles_por_columna <- sapply(test_data[, categorical_columns], function(x) length(unique(x)))
+# Mostrar las columnas con un solo nivel (me dio un error antes con la funcion del encoder)
+columnas_con_un_solo_nivel <- names(niveles_por_columna[niveles_por_columna == 1])
+print("Columnas con un solo nivel:")
+print(columnas_con_un_solo_nivel)
+
+# Eliminar columnas con un solo nivel
+train_data <- train_data[, !names(train_data) %in% columnas_con_un_solo_nivel]
+test_data <- test_data[, !names(test_data) %in% columnas_con_un_solo_nivel]
+
+# Actualizar
+categorical_columns <- train_data %>% select(where(~ !is.numeric(.))) %>% names()
+
 ```
+
+```{r combine_num_cat}
+# Crear un encoder para las variables categóricas
+encoder <- dummyVars("~ .", data = train_data[, categorical_columns], fullRank = FALSE)
+
+# Aplicar el encoder a los datos de entrenamiento y prueba
+train_categorical_encoded <- as.data.frame(predict(encoder, newdata = train_data[, categorical_columns]))
+test_categorical_encoded <- as.data.frame(predict(encoder, newdata = test_data[, categorical_columns]))
+
+# Verificar si faltan columnas en test_categorical_encoded
+columnas_faltantes <- setdiff(names(train_categorical_encoded), names(test_categorical_encoded))
+
+# Agregar las columnas faltantes a test_categorical_encoded con valores 0
+for (col in columnas_faltantes) {
+  test_categorical_encoded[[col]] <- 0
+}
+
+# Reordenar las columnas de test_categorical_encoded para que coincidan con train_categorical_encoded
+test_categorical_encoded <- test_categorical_encoded[, names(train_categorical_encoded)]
+
+# data ya con encoded y datos jutnados
+train_encoded <- cbind(train_data[, numeric_columns], train_categorical_encoded)
+test_encoded <- cbind(test_data[, numeric_columns], test_categorical_encoded)
+
+
+# Imputar valores faltantes en las columnas numéricas con la media
+for (i in 1:ncol(train_encoded)) {
+  if (is.numeric(train_encoded[, i])) {  # Solo aplicamos a columnas numéricas
+    train_encoded[is.na(train_encoded[, i]), i] <- mean(train_encoded[, i], na.rm = TRUE)
+  }
+}
+
+for (i in 1:ncol(test_encoded)) {
+  if (is.numeric(test_encoded[, i])) {  # Solo aplicamos a columnas numéricas
+    test_encoded[is.na(test_encoded[, i]), i] <- mean(test_encoded[, i], na.rm = TRUE)
+  }
+}
+
+# Verificar valores faltantes en los datos de entrenamiento y prueba
+#colSums(is.na(train_encoded))
+#colSums(is.na(test_encoded))
+
+# Verificar valores faltantes en los datos
+print("Valores faltantes en train_encoded:")
+print(colSums(is.na(train_encoded)))
+print("Variables que estan en train")
+print(ncol(train_encoded))
+
+print("Valores faltantes en test_encoded:")
+print(colSums(is.na(test_encoded)))
+print("Variables que estan en test")
+print(ncol(test_encoded))
+
+```
+
 
 ## 1.Elabore un modelo de regresión usando K nearest Neighbors (KNN), el conjunto de entrenamiento y la variable respuesta SalesPrice. Prediga con el modelo y explique los resultados a los que llega. Asegúrese que los conjuntos de entrenamiento y prueba sean los mismos de las entregas anteriores para que los modelos sean comparables.
 
+```{r training}}
+set.seed(123)
 
-## Analice los resultados del modelo de regresión usando KNN. ¿Qué tan bien le fue prediciendo? Utilice las métricas correctas.
+
+# Definir el valor de k a mano
+k_vecinos <- round(sqrt(nrow(train_encoded)), 0)
+
+parametros <- expand.grid(k = k_vecinos)
+
+# entranmiento (en el ejemplo en canvas se hacía el training de una forma similar pero esta me parcio apropiada tambie, ya que se excluye completamente la variable respuesta del data set)
+modelo_knn <- train(
+  SalePrice~.,  
+  data = train_encoded,        
+  method = "knn",     
+  preProcess = c("center", "scale"),  # Normalización
+  tuneGrid = parametros  # Valor de k
+)
+
+# Mostrar el modelo entrenado
+print("Este es el modelo resultante con los datos del training")
+print(modelo_knn)
+```
+
+
+Con el print lo que vemos es el entrenamiento con el set de datos al que llamamos train_encoded. Este resultado ya muestra un MAE y un RMSE auqneu aún no hayamos hecho las predicciones. Pero por el método de aprendizaje KNN y la función que utilizamos de la librería CARET esta automáticamente hace una evaluación interna del modelo. Obteniendo como resultados:
+
+* RMSE: 47063.15  
+* Rsquared: 0.7098627
+* MAE: 28763.05
+
+```{r predict_testing}
+print("Ahora aqui ya es donde se realiza la prediccion usando el set de datos de test")
+predicciones <- predict(modelo_knn, newdata = test_encoded)
+```
+
+## 2.Analice los resultados del modelo de regresión usando KNN. ¿Qué tan bien le fue prediciendo? Utilice las métricas correctas.
+
+```{r evaluating_prediction}}
+rmse <- sqrt(mean((y_test - predicciones)^2))
+print(paste("RMSE con el set de datos de prueba:", rmse))
+
+```
 
