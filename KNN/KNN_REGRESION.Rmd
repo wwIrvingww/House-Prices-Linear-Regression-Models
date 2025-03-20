@@ -154,8 +154,49 @@ predicciones <- predict(modelo_knn, newdata = test_encoded)
 ## 2.Analice los resultados del modelo de regresión usando KNN. ¿Qué tan bien le fue prediciendo? Utilice las métricas correctas.
 
 ```{r evaluating_prediction}}
-rmse <- sqrt(mean((y_test - predicciones)^2))
-print(paste("RMSE con el set de datos de prueba:", rmse))
+# Crear el dataframe de resultados
+df_resultados <- data.frame(
+  Índice = 1:length(test_encoded$SalePrice),  # Índice de cada observación
+  Real = test_encoded$SalePrice,              # Valores reales
+  Predicho = predicciones                     # Valores predichos
+)
+
+# Graficar ambas series
+ggplot(df_resultados) +
+  geom_point(aes(x = Índice, y = Real, color = "Real"), size = 2) +  # Puntos rojos (valores reales)
+  geom_point(aes(x = Índice, y = Predicho, color = "Predicho"), size = 2) +  # Puntos azules (predicciones)
+  scale_color_manual(values = c("Real" = "red", "Predicho" = "blue")) +  # Definir colores
+  labs(
+    title = "Comparación: Valores Reales vs. Predicciones",
+    x = "Índice de Observación",
+    y = "Precio de la Casa (SalePrice)",
+    color = "Serie"
+  ) +
+  theme_minimal()
+
+# Calcular métricas de evaluación
+rmse <- sqrt(mean((df_resultados$Real - df_resultados$Predicho)^2))
+print(paste("RMSE:", rmse))
+
+media_real <- mean(df_resultados$Real)
+
+rmse_porcentual <- (rmse / media_real)
+
+# Mostrar el RMSE porcentual
+print(paste("RMSE porcentual:", rmse_porcentual))
+
+rsquared <- cor(df_resultados$Real, df_resultados$Predicho)^2
+print(paste("R²:", rsquared))
 
 ```
+
+Viendo estos resultados de predicciones sobre el conjunto de testing podemos notar distintas cosas interesantes. Lo primero es en la gráfica donde se ven las diferencias entre el valor real y su correpondiente predicción. Se puede ver que cuando el precio de la casa es muy alto o muy bajo, al modelo se le dificulta realmente acercarse al valor real, la desviación de la predicción mayor es en esas partes. Mientras que en el centro y un poco abajo del centro se ve que los valores predichos (azules), se encuentran más cerca de los valores reales. 
+
+Con respecto al RMSE los resultados son regulares, se tiene un R^2 de 77.98% y RMSE de 44760.89, osea casi $45K dolares de diferencia en el precio de una cas, lo cuál si representa una diferencia significativa en el contexto que se está analizando, el precio de una casa.Si lo vemos como un porcentaje para entender la seriedad del errror colocamos también la desviación del predicción como un porcentaje. La predicción se desvía un 24.68% aproximadamente, casi 1/4 del precio, por lo que el modelo no es tan bueno. Es importante mencionar que para este primer modelod eregresión se tomaron todas las varaibles del data set al igual que en otros modelos hechos anteriormente.
+
+# 3
+
+# 4
+
+# 5 
 
