@@ -1,0 +1,47 @@
+---
+title: "KNN_REGRESION"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+```
+
+```{r cargando paquetes, message=FALSE, warning=FALSE}
+library(GGally)
+library(dplyr)
+library(tidyverse)
+library(class)
+library(ggplot2)
+library(caret)
+```
+
+
+```{r load_data, include=FALSE}
+train_data <- read.csv("train_final.csv")
+test_data <- read.csv("test_final.csv")
+```
+
+```{r remove_na_columns}
+porcentaje_na <- sapply(train_data, function(x) sum(is.na(x)) / length(x)) * 100
+
+columnas_a_eliminar <- names(porcentaje_na[porcentaje_na > 75])
+print(columnas_a_eliminar)
+
+train_data <- train_data[, !names(train_data) %in% columnas_a_eliminar]
+test_data <- test_data[, !names(test_data) %in% columnas_a_eliminar]
+```
+
+```{r process_empty}}
+numeric_columns <- train_data %>% select(where(is.numeric)) %>% names ()
+
+preProc_num_train <- preProcess(train_data[, numeric_columns], method = "medianImpute")
+preProc_num_test <- preProcess(test_data[, numeric_columns], method = "medianImpute")
+
+```
+
+## 1.Elabore un modelo de regresión usando K nearest Neighbors (KNN), el conjunto de entrenamiento y la variable respuesta SalesPrice. Prediga con el modelo y explique los resultados a los que llega. Asegúrese que los conjuntos de entrenamiento y prueba sean los mismos de las entregas anteriores para que los modelos sean comparables.
+
+
+## Analice los resultados del modelo de regresión usando KNN. ¿Qué tan bien le fue prediciendo? Utilice las métricas correctas.
+
