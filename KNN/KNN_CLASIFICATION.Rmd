@@ -1,0 +1,129 @@
+---
+title: "KNN_clasification"
+author: "Irving"
+date: "2025-03-20"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = F, warning = F)
+```
+
+```{r cargando paquetes, message=FALSE, warning=FALSE}
+library(GGally)
+library(dplyr)
+library(tidyverse)
+library(class)
+library(ggplot2)
+library(caret)
+```
+
+
+```{r load_data, include=FALSE}
+#train data ya tiene el 70 y test_data el 30%
+train_data <- read.csv("train_final.csv")
+test_data <- read.csv("test_final.csv")
+```
+
+```{r remove_na_columns, include=FALSE}
+pct_na <- sapply(train_data, function(x) mean(is.na(x))*100)
+drop_cols <- names(pct_na[pct_na > 75])
+train_data <- train_data %>% select(-all_of(drop_cols))
+test_data  <- test_data  %>% select(-all_of(drop_cols))
+```
+
+```{r discretization, include=FALSE}
+breaks <- quantile(train_data$SalePrice, probs = c(0,1/3,2/3,1), na.rm=TRUE)
+labels <- c("barata","estandar","cara")
+
+train_data$CategoriaPrecio <- cut(train_data$SalePrice, breaks=breaks, labels=labels, include.lowest=TRUE)
+test_data$CategoriaPrecio  <- cut(test_data$SalePrice,  breaks=breaks, labels=labels, include.lowest=TRUE)
+
+```
+
+
+```{r process_data, echo=FALSE}
+
+numeric_cols <- train_data %>% select(where(is.numeric)) %>% names()
+
+all_cat <- train_data %>% select(where(~!is.numeric(.))) %>% names()
+valid_cat <- all_cat[
+  sapply(all_cat, function(col) n_distinct(train_data[[col]]) > 1 && n_distinct(test_data[[col]]) > 1)
+]
+
+preNum <- preProcess(train_data[numeric_cols], method="medianImpute")
+train_data[numeric_cols] <- predict(preNum, train_data[numeric_cols])
+test_data[numeric_cols]  <- predict(preNum, test_data[numeric_cols])
+
+encoder <- dummyVars(~ ., data=train_data[valid_cat], fullRank=TRUE)
+train_cat <- predict(encoder, train_data[valid_cat]) %>% as.data.frame()
+test_cat  <- predict(encoder, test_data[valid_cat])  %>% as.data.frame()
+
+missing <- setdiff(names(train_cat), names(test_cat))
+test_cat[missing] <- 0
+test_cat <- test_cat[names(train_cat)]
+
+train_encoded <- bind_cols(train_data[numeric_cols], train_cat, CategoriaPrecio=train_data$CategoriaPrecio)
+test_encoded  <- bind_cols(test_data[numeric_cols],  test_cat,  CategoriaPrecio=test_data$CategoriaPrecio)
+
+```
+
+
+```{r scaling, echo=FALSE}
+predictors <- select(train_encoded, -CategoriaPrecio)
+nzv <- nearZeroVar(predictors)
+if(length(nzv) > 0) {
+  predictors <- predictors[ , -nzv]
+  test_predictors <- select(test_encoded, -CategoriaPrecio)[ , -nzv]
+} else {
+  test_predictors <- select(test_encoded, -CategoriaPrecio)
+}
+
+preProc <- preProcess(predictors, method = c("center","scale"))
+
+train_scaled <- predict(preProc, predictors)
+test_scaled  <- predict(preProc, test_predictors)
+
+train_scaled[is.na(train_scaled)] <- 0
+test_scaled[is.na(test_scaled)]   <- 0
+
+response <- train_encoded$CategoriaPrecio
+
+stopifnot(sum(is.na(train_scaled)) == 0, sum(is.na(test_scaled)) == 0)
+```
+
+4. Haga un modelo de clasificación, use la variable categórica que hizo con el precio de las casas (barata, media y cara) como variable respuesta.   
+ 
+```{r knn_model, echo=FALSE}
+set.seed(123)
+knn_pred <- knn(train = train_scaled, test = test_scaled, cl = response, k = 10)
+test_encoded$Pred_KNN <- knn_pred
+
+cat("Distribución de clases (reales):\n")
+print(table(test_encoded$CategoriaPrecio))
+cat("\nDistribución de clases (predichas):\n")
+print(table(test_encoded$Pred_KNN))
+
+```
+5. Utilice los modelos con el conjunto de prueba y determine la eficiencia del algoritmo para predecir y clasificar.
+6. Haga un análisis de la eficiencia del modelo de clasificación usando una matriz de confusión. Tenga en cuenta la efectividad, donde el algoritmo se equivocó más, donde se equivocó menos y la importancia que tienen los errores. 
+```{r test_model, echo=FALSE}
+cm <- confusionMatrix(test_encoded$Pred_KNN, test_encoded$CategoriaPrecio)
+print(cm)
+cat("Accuracy:", cm$overall["Accuracy"], "\n")
+
+```
+7. Analice el modelo. ¿Cree que pueda estar sobreajustado? 
+```{r overfitting_check, echo=FALSE}
+train_pred <- knn(train = train_scaled, test = train_scaled, cl = response, k = 10)
+train_encoded$Pred_KNN <- train_pred
+
+train_cm <- confusionMatrix(train_pred, train_encoded$CategoriaPrecio)
+test_cm  <- confusionMatrix(test_encoded$Pred_KNN, test_encoded$CategoriaPrecio)
+
+cat("Train performance\n")
+print(train_cm$overall[c("Accuracy","Kappa")])
+cat("\nTest performance\n")
+print(test_cm$overall[c("Accuracy","Kappa")])
+
+```

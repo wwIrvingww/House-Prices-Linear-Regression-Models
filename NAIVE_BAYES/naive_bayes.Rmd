@@ -162,6 +162,7 @@ summary(modelo_nb_tuned)
 
 ```
 
+
 ```{r new_model, echo=FALSE}
 modelo_final_nb <- naiveBayes(SalePriceCat ~ ., data = train_data, laplace = 0, usekernel = TRUE, adjust = 0.5)
 
