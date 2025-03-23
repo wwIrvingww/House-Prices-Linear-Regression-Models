@@ -96,17 +96,44 @@ stopifnot(sum(is.na(train_scaled)) == 0, sum(is.na(test_scaled)) == 0)
 4. Haga un modelo de clasificación, use la variable categórica que hizo con el precio de las casas (barata, media y cara) como variable respuesta.   
  
 ```{r knn_model, echo=FALSE}
+# Fijamos semilla para reproducibilidad
 set.seed(123)
+
+# Entrenamiento y predicción usando KNN
 knn_pred <- knn(train = train_scaled, test = test_scaled, cl = response, k = 10)
+
+# Guardamos las predicciones en el conjunto de prueba
 test_encoded$Pred_KNN <- knn_pred
 
+# Estadísticas básicas del modelo entrenado
+cat("Resumen del modelo KNN (k = 10)\n")
+cat("Total de observaciones de entrenamiento:", nrow(train_scaled), "\n")
+cat("Total de observaciones de prueba:", nrow(test_scaled), "\n")
+cat("Clases posibles:", paste(levels(response), collapse = ", "), "\n\n")
+
+# Distribución de clases reales y predichas
 cat("Distribución de clases (reales):\n")
 print(table(test_encoded$CategoriaPrecio))
+
 cat("\nDistribución de clases (predichas):\n")
 print(table(test_encoded$Pred_KNN))
 
+# Porcentaje por clase predicha
+cat("\nPorcentaje por clase predicha:\n")
+print(round(prop.table(table(test_encoded$Pred_KNN)) * 100, 2))
+
+
 ```
 5. Utilice los modelos con el conjunto de prueba y determine la eficiencia del algoritmo para predecir y clasificar.
+```{r evaluate_knn_test, echo=FALSE}
+# Evaluación del modelo KNN en conjunto de prueba (solo eficiencia global)
+cm <- confusionMatrix(test_encoded$Pred_KNN, test_encoded$CategoriaPrecio)
+
+cat("Eficiencia del modelo KNN en el conjunto de prueba:\n")
+cat("Accuracy:", round(cm$overall["Accuracy"], 4), "\n")
+cat("Kappa:", round(cm$overall["Kappa"], 4), "\n")
+```
+
 6. Haga un análisis de la eficiencia del modelo de clasificación usando una matriz de confusión. Tenga en cuenta la efectividad, donde el algoritmo se equivocó más, donde se equivocó menos y la importancia que tienen los errores. 
 ```{r test_model, echo=FALSE}
 cm <- confusionMatrix(test_encoded$Pred_KNN, test_encoded$CategoriaPrecio)
