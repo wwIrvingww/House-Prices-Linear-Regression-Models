@@ -16,6 +16,7 @@ library(tidyverse)
 library(class)
 library(ggplot2)
 library(caret)
+library(MLmetrics)
 ```
 
 
@@ -127,3 +128,85 @@ cat("\nTest performance\n")
 print(test_cm$overall[c("Accuracy","Kappa")])
 
 ```
+
+8.Haga un modelo usando validación cruzada, compare los resultados de este con los del modelo anterior. ¿Cuál funcionó mejor?
+
+```{r cross_validation_categorical}
+# Definir el control de la validación cruzada
+ctrl <- trainControl(method = "cv",  # cross val
+                     number = 10,    
+                     classProbs = TRUE,
+                     summaryFunction = multiClassSummary) 
+
+# Definir la grilla de valores para k (número de vecinos)
+knn_grid <- expand.grid(k = seq(3, 21, by = 2))  
+
+# Entrenar el modelo con validación cruzada
+set.seed(123)
+knn_cv_model <- train(x = train_scaled, 
+                      y = response, 
+                      method = "knn", 
+                      trControl = ctrl, 
+                      tuneGrid = knn_grid, 
+                      metric = "Accuracy")  # Métrica a optimizar
+
+
+print(knn_cv_model)
+
+knn_cv_pred <- predict(knn_cv_model, newdata = test_scaled)
+
+cm_cv <- confusionMatrix(knn_cv_pred, test_encoded$CategoriaPrecio)
+print(cm_cv)
+cat("Accuracy (CV):", cm_cv$overall["Accuracy"], "\n")
+
+train_cv_pred <- predict(knn_cv_model, newdata = train_scaled)
+train_cm_cv <- confusionMatrix(train_cv_pred, train_encoded$CategoriaPrecio)
+
+cat("Train performance (CV):\n")
+print(train_cm_cv$overall[c("Accuracy","Kappa")])
+cat("\nTest performance (CV):\n")
+print(cm_cv$overall[c("Accuracy","Kappa")])
+```
+
+Los resultados fueron menos precisos por tan solo pot aproximadamente un 1%. El módelo sigue siendo bastante bueno para predecir con las clasificaciones, mostrando un accuracy de 0.8647. Además de obtener estos resultados para el set de datos de testing, también lo hicimos con el set de prueba. Esto con el fin de identificar si el modelo realmente es bueno o si este tiene overfitting. COmo podemos ver, realmente los resultados no cambian signficativamente, lo cuál es un buen indicador de que el modelo esta generalizando bien la información y que no está sobre ajustado a datos parecidos a los del entrenamiento. En conclusión los resultados fueron de igual manera satisfactorios, podemos ver que el modelo no se sobreajusta pero tiene un desempeño ligeramente peor. Esto tiene sentido, ya que realmente la validación hace que el modelo sea más robusto y que pueda generalizar mejor, no tanto la mejora del accuracy como tal.
+
+9. Tanto para los modelos de regresión como de clasificación, pruebe con varios valores de los
+hiperparámetros ¿Qué parámetros pueden tunearse en un KNN?, use el mejor modelo del
+tuneo, ¿Mejoraron los resultados usando el mejor modelo ahora? Explique
+
+```{r tunin}
+# Definir la grilla de valores para k
+knn_grid <- expand.grid(k = seq(1, 30, by = 1))
+
+# Entrenar el modelo con validación cruzada y pesos ponderados
+set.seed(123)
+knn_cv_model <- train(x = train_scaled, 
+                      y = response, 
+                      method = "knn", 
+                      trControl = ctrl, 
+                      tuneGrid = knn_grid, 
+                      metric = "Accuracy",
+                      weights = "distance")
+
+# Ver los resultados del tuning
+print(knn_cv_model)
+
+# Graficar el rendimiento para diferentes valores de k
+ggplot(knn_cv_model) +
+  theme_minimal() +
+  labs(title = "Rendimiento de KNN para diferentes valores de k",
+       x = "Número de vecinos (k)",
+       y = "Accuracy")
+
+
+
+```
+
+Aca podemos ver una gran cantidad de resultados distintos. En este caso nos enfocamos principalmente en el tuning de el parametro K, que es la cantidad de vecions k. Para poder tunear el modelo hicimos que se hiciera una entranmiento con una grilla de valores para k. Probamos con valores de k, desde 1 a 30 con un step de 1 para obtener una gráfica que relaciona el número de vecinos con el accuracy luego del entrenamiento con cada uno de los distintos valores. Dentro del tuning se puede ver que los mejores resuiltados se encuentran con un valor k de 20 o 19. Siendo el de 20 el más alto con un accuracy de 0.8627.
+
+10.Compare la eficiencia del algoritmo con el resultado obtenido con el árbol de decisión (el de clasificación), el modelo de random forest y el de naive bayes que hizo en las entregas pasadas. ¿Cuál es mejor para predecir? ¿Cuál se demoró más en procesar?
+
+
+Por fines prácticos esta comparación se realizará en el documento de la entrega final, ya que los resultados de cada uno de los métodos se encuentran en distintos archivos y bajo largos análisis con múltiples lineas de código que alargarían demasiado este mismo archivo.
+
+
