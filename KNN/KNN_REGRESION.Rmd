@@ -194,9 +194,43 @@ Viendo estos resultados de predicciones sobre el conjunto de testing podemos not
 
 Con respecto al RMSE los resultados son regulares, se tiene un R^2 de 77.98% y RMSE de 44760.89, osea casi $45K dolares de diferencia en el precio de una cas, lo cuál si representa una diferencia significativa en el contexto que se está analizando, el precio de una casa.Si lo vemos como un porcentaje para entender la seriedad del errror colocamos también la desviación del predicción como un porcentaje. La predicción se desvía un 24.68% aproximadamente, casi 1/4 del precio, por lo que el modelo no es tan bueno. Es importante mencionar que para este primer modelod eregresión se tomaron todas las varaibles del data set al igual que en otros modelos hechos anteriormente.
 
-# 3
+```{r tunin_regresion}
+# Cargar las librerías necesarias
+library(caret)
+library(ggplot2)
 
-# 4
+# Definir la grilla de valores para k (de 1 a 25)
+parametros <- expand.grid(k = seq(1, 25, by = 1))
 
-# 5 
+
+set.seed(123)
+modelo_knn_reg <- train(
+  SalePrice ~ .,                  # Fórmula: SalePrice en función de todas las demás variables
+  data = train_encoded,           # Conjunto de entrenamiento
+  method = "knn",                 
+  preProcess = c("center", "scale"),  # Normalización de los datos
+  tuneGrid = parametros,          
+  trControl = trainControl(method = "cv", number = 10),  
+  metric = "RMSE"                 
+)
+
+print("Este es el modelo resultante con los datos del training")
+print(modelo_knn_reg)
+
+# Graficar el RMSE en función de k
+ggplot(modelo_knn_reg) +
+  theme_minimal() +
+  labs(title = "RMSE vs Número de vecinos (k)",
+       x = "Número de vecinos (k)",
+       y = "RMSE")
+
+# Seleccionar el mejor valor de k
+mejor_k <- modelo_knn_reg$bestTune$k
+cat("El mejor valor de k es:", mejor_k, "\n")
+
+predicciones <- predict(modelo_knn_reg, newdata = test_encoded)
+
+rmse_test <- sqrt(mean((predicciones - test_encoded$SalePrice)^2))
+cat("RMSE en el conjunto de prueba:", rmse_test, "\n")
+```
 

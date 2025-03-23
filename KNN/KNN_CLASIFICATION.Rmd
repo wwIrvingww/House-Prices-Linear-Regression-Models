@@ -198,7 +198,21 @@ ggplot(knn_cv_model) +
        x = "Número de vecinos (k)",
        y = "Accuracy")
 
+#ewntrenar el modelo KNN con k = 20
+set.seed(123)
+knn_model_k20 <- knn(train = train_scaled, 
+                     test = test_scaled, 
+                     cl = response, 
+                     k = 20)
 
+
+test_encoded$Pred_KNN_k20 <- knn_model_k20
+
+
+cm_k20 <- confusionMatrix(test_encoded$Pred_KNN_k20, test_encoded$CategoriaPrecio)
+
+print(cm_k20)
+cat("Accuracy (k = 20):", cm_k20$overall["Accuracy"], "\n")
 
 ```
 
