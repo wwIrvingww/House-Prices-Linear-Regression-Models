@@ -1,0 +1,54 @@
+---
+title: "Logistic_regression"
+author: "Irving, Chuy"
+date: "2025-04-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caret)
+```
+
+```{r load_data, include=FALSE}
+#train data ya tiene el 70 y test_data el 30%
+train_data <- read.csv("../train_final.csv")
+test_data <- read.csv("../test_final.csv")
+```
+
+```{r remove_na_columns, include=FALSE}
+pct_na <- sapply(train_data, function(x) mean(is.na(x))*100)
+drop_cols <- names(pct_na[pct_na > 75])
+train_data <- train_data %>% select(-all_of(drop_cols))
+test_data  <- test_data  %>% select(-all_of(drop_cols))
+```
+
+```{r discretization, include=FALSE}
+breaks <- quantile(train_data$SalePrice, probs = c(0,1/3,2/3,1), na.rm=TRUE)
+labels <- c("barata","estandar","cara")
+
+train_data$CategoriaPrecio <- cut(train_data$SalePrice, breaks=breaks, labels=labels, include.lowest=TRUE)
+test_data$CategoriaPrecio  <- cut(test_data$SalePrice,  breaks=breaks, labels=labels, include.lowest=TRUE)
+
+```
+
+
+1. Cree una variable dicotómica por cada una de las categorías de la variable respuesta categórica que creó en hojas anteriores. Debería tener 3 variables dicotómicas (valores 0 y 1) una que diga si la vivienda es cara o no, media o no, económica o no.
+```{r dicotomic_variable, echo=FALSE}
+# Para el conjunto de entrenamiento
+train_data <- train_data %>%
+  mutate(
+    Cara = ifelse(CategoriaPrecio == "cara", 1, 0),
+    Estandar = ifelse(CategoriaPrecio == "estandar", 1, 0),
+    Economica = ifelse(CategoriaPrecio == "barata", 1, 0)
+  )
+
+# Para el conjunto de prueba
+test_data <- test_data %>%
+  mutate(
+    Cara = ifelse(CategoriaPrecio == "cara", 1, 0),
+    Estandar = ifelse(CategoriaPrecio == "estandar", 1, 0),
+    Economica = ifelse(CategoriaPrecio == "barata", 1, 0)
+  )
+```
