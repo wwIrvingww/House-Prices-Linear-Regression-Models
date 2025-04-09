@@ -9,13 +9,18 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(caret)
+library(car)
+library(reshape2)
+library(ggplot2)
 ```
 
+2.Use los mismos conjuntos de entrenamiento y prueba que utilizó en las hojas anteriores.
 ```{r load_data, include=FALSE}
 #train data ya tiene el 70 y test_data el 30%
 train_data <- read.csv("../train_final.csv")
 test_data <- read.csv("../test_final.csv")
 ```
+Se  cargó la data que se ha usado en entregas anteriores.
 
 ```{r remove_na_columns, include=FALSE}
 pct_na <- sapply(train_data, function(x) mean(is.na(x))*100)
@@ -23,6 +28,7 @@ drop_cols <- names(pct_na[pct_na > 75])
 train_data <- train_data %>% select(-all_of(drop_cols))
 test_data  <- test_data  %>% select(-all_of(drop_cols))
 ```
+Se remueven las columnas que no dan información útil.
 
 ```{r discretization, include=FALSE}
 breaks <- quantile(train_data$SalePrice, probs = c(0,1/3,2/3,1), na.rm=TRUE)
@@ -32,7 +38,7 @@ train_data$CategoriaPrecio <- cut(train_data$SalePrice, breaks=breaks, labels=la
 test_data$CategoriaPrecio  <- cut(test_data$SalePrice,  breaks=breaks, labels=labels, include.lowest=TRUE)
 
 ```
-
+Creamos las tres categorías de las casas (barata, estándar, cara.)
 
 1. Cree una variable dicotómica por cada una de las categorías de la variable respuesta categórica que creó en hojas anteriores. Debería tener 3 variables dicotómicas (valores 0 y 1) una que diga si la vivienda es cara o no, media o no, económica o no.
 ```{r dicotomic_variable, echo=FALSE}
@@ -51,4 +57,216 @@ test_data <- test_data %>%
     Estandar = ifelse(CategoriaPrecio == "estandar", 1, 0),
     Economica = ifelse(CategoriaPrecio == "barata", 1, 0)
   )
+```
+Se crearon las tres variables dicotómicas para las categorías `barata`, `estandar` y `cara`
+
+3. Elabore un modelo de regresión logística para conocer si una vivienda es cara o no, utilizando el conjunto
+de entrenamiento y explique los resultados a los que llega. El experimento debe ser reproducible por lo
+que debe fijar que los conjuntos de entrenamiento y prueba sean los mismos siempre que se ejecute el
+código. Use validación cruzada.
+
+```{r process_data, echo=FALSE}
+# 1. Selección de variables numéricas
+numeric_cols <- train_data %>% select(where(is.numeric)) %>% names()
+
+# 2. Selección de variables categóricas
+all_cat <- train_data %>% select(where(~!is.numeric(.))) %>% names()
+valid_cat <- all_cat[
+  sapply(all_cat, function(col) {
+    n_distinct(train_data[[col]]) > 1 && n_distinct(test_data[[col]]) > 1
+  })
+]
+
+# 3. Imputación de valores perdidos en variables numéricas usando la mediana
+preNum <- preProcess(train_data[numeric_cols], method = "medianImpute")
+train_data[numeric_cols] <- predict(preNum, train_data[numeric_cols])
+test_data[numeric_cols]  <- predict(preNum, test_data[numeric_cols])
+
+# 4. Codificación (one-hot encoding) de variables categóricas
+encoder <- dummyVars(~ ., data = train_data[valid_cat], fullRank = TRUE)
+train_cat <- predict(encoder, train_data[valid_cat]) %>% as.data.frame()
+test_cat  <- predict(encoder, test_data[valid_cat]) %>% as.data.frame()
+
+# 5. Asegurarse que las columnas codificadas en el conjunto de prueba sean idénticas a las del entrenamiento
+missing <- setdiff(names(train_cat), names(test_cat))
+if(length(missing) > 0){
+  test_cat[missing] <- 0
+  test_cat <- test_cat[names(train_cat)]
+}
+
+# 6. Unir las variables numéricas procesadas, las variables dummy y la variable respuesta
+train_encoded <- bind_cols(train_data[numeric_cols], train_cat, 
+                           CategoriaPrecio = train_data$CategoriaPrecio)
+test_encoded  <- bind_cols(test_data[numeric_cols],  test_cat,  
+                           CategoriaPrecio = test_data$CategoriaPrecio)
+
+```
+Antes de elaborar el modelo, se realizó un procesamiento de la data para que sea compatible con el modelo que vamos a utilizar. Ya que el modelo no puede contener NAN's y el número de observaciones que contenía NAN's era menor a 100, se optó por omitir esas filas.
+
+
+
+```{r logistic_regression, echo=FALSE}
+# Fijamos la semilla para que la selección (y validación) sea reproducible
+set.seed(1234)
+
+# Preparamos el dataset para el modelado:
+# Eliminamos variables que no queremos usar como predictoras:
+# - SalePrice: la variable original numérica a partir de la cual se creó la variable objetivo.
+# - CategoriaPrecio: la categorización original.
+# - Estandar y Economica: las otras dos variables dicotómicas que derivamos.
+# Así, nos quedamos con las variables predictoras y el target "Cara".
+model_data <- train_data %>% select(-SalePrice, -CategoriaPrecio, -Estandar, -Economica)
+
+# Eliminamos las filas que contienen valores perdidos
+model_data <- na.omit(model_data)
+
+# Configuramos la validación cruzada con 10 folds:
+train_control <- trainControl(method = "cv", number = 10)
+
+# Entrenamos el modelo de regresión logística usando caret.
+# Se utiliza la familia binomial para indicar que se trata de un modelo logístico.
+logistic_model <- train(as.factor(Cara) ~ ., 
+                        data = model_data, 
+                        method = "glm", 
+                        family = "binomial", 
+                        trControl = train_control)
+
+# Mostramos el resumen del modelo
+print(logistic_model)
+
+
+```
+El primer aspecto a notar es el aviso proporiconado por la librería," glm.fit: algorithm did not converge":
+Esto indica que el algoritmo iterativo usado para ajustar la regresión logística no alcanzó la convergencia completa. En otras palabras, después de varias iteraciones, el método no pudo encontrar un conjunto de parámetros estables. Esto puede suceder cuando: Existen variables altamente correlacionadas (multicolinealidad), hay una separación completa o casi completa de las clases en algunos predictores. El siguiente aviso a tomarle importancia es"prediction from rank-deficient fit; attr(*, "non-estim") has doubtful cases":, este mensaje sugiere que el modelo es rank-deficient; es decir, hay redundancias entre las variables predictoras, de forma que algunos coeficientes no se pueden estimar de manera única. Esto suele suceder cuando existen variables con alta correlación o cuando se incluyen más predictores de los que la información en la muestra puede soportar.  
+Ahora bien, hablando directamente de las estadísticas se obtuvo un `accurracy` de 0.7345955 y un `kappa` de 0.4682196 lo que sugiere que, a pesar de los avisos, el modelo tiene un desempeño moderado para clasificar las viviendas como "cara" (o no). Aunque el rendimiento predictivo es aceptable, los avisos indican que se debe ser cauteloso al interpretar los coeficientes y confiar en la estabilidad del modelo, por lo que se procederá a hacer un estadio más detallado para saber si hay multicolinealidad.
+
+4. Analice el modelo. Determine si hay multicolinealidad en las variables, y cuáles son las que aportan al
+modelo, por su valor de significación. Haga un análisis de correlación de las variables del modelo y
+especifique si el modelo se adapta bien a los datos.
+
+```{r modelo_summary, echo=TRUE}
+# Ajustar un modelo de regresión logística usando el dataset 'model_data'
+full_model <- glm(as.factor(Cara) ~ ., data = model_data, family = "binomial")
+
+summary(full_model)
+```
+
+```{r settings_model, echo=TRUE}
+# 1. Asegurarse de que 'predictors_non_alias' solo contenga los predictores que efectivamente están en model_data
+available_predictors <- predictors_non_alias[predictors_non_alias %in% names(model_data)]
+print("Predictores disponibles en model_data:")
+print(available_predictors)
+
+# 2. Envolver cada predictor disponible en backticks para que la fórmula sea sintácticamente válida
+available_predictors_backticks <- paste0("`", available_predictors, "`")
+
+# 3. Construir la fórmula utilizando únicamente los predictores disponibles
+fmla_non_alias <- as.formula(paste("as.factor(Cara) ~", 
+                                   paste(available_predictors_backticks, collapse = " + ")))
+print("Fórmula del modelo sin predictores aliasados y con variables disponibles:")
+print(fmla_non_alias)
+
+# 4. Ajustar el modelo usando la fórmula corregida
+full_model_non_alias <- glm(fmla_non_alias, data = model_data, family = "binomial")
+
+# 5. Mostrar el resumen del nuevo modelo
+summary(full_model_non_alias)
+
+
+```
+
+```{r vif_stimate, echo=TRUE}
+# 1. Identificar los coeficientes aliasados (colineales) del modelo original
+aliased <- alias(full_model)$Complete
+print("Variables colineales (alias):")
+print(aliased)
+
+# 2. Extraer los nombres de los coeficientes del modelo original
+coef_names <- names(coef(full_model))
+
+# Identificar los coeficientes que NO están en la matriz de alias, es decir, que se pueden estimar
+non_alias <- coef_names[!coef_names %in% rownames(aliased)]
+print("Coeficientes no aliasados:")
+print(non_alias)
+
+# 3. Filtrar predictors_non_alias para obtener únicamente aquellos presentes en model_data
+available_predictors <- predictors_non_alias[predictors_non_alias %in% names(model_data)]
+print("Predictors no alias presentes en model_data:")
+print(available_predictors)
+
+# 4. Construir la fórmula usando únicamente los predictores disponibles (envolviéndolos en backticks)
+available_predictors_backticks <- paste0("`", available_predictors, "`")
+fmla_non_alias <- as.formula(paste("as.factor(Cara) ~", 
+                                   paste(available_predictors_backticks, collapse = " + ")))
+print("Fórmula del modelo sin predictores aliasados y solo con variables disponibles:")
+print(fmla_non_alias)
+
+# 5. Ajustar el nuevo modelo con la fórmula corregida
+full_model_non_alias <- glm(fmla_non_alias, data = model_data, family = "binomial")
+
+# 6. Calcular el VIF para el nuevo modelo utilizando la librería car
+vif_values <- vif(full_model_non_alias)
+print("Valores VIF para el modelo sin coeficientes aliasados:")
+print(vif_values)
+
+```
+Al principio se mostró una  matriz con los alias del modelo original. Esto indica que, en el conjunto de predictores inicial, existen relaciones de dependencia lineal exacta entre algunas variables. Al filtrar estos predictores se crean modelos "no aliasados", es decir, solo se incluyen variables que se pueden estimar de forma única.  
+Dentro de la función VIF se calcularon distintos valores de los cualees podemos discutir los siguiente:  
+Variables como `Id` con 1.16 o `MSSubClass` con 1.59, `LotFrontage` 1.66, `LotArea` con 1.41 y algunos otros valores qque tiene un coeificiente entre 1 y 3. Esto indidca poca o ninguna colinealidad significativa en esos casos. Luego tenemos valores que son moderadamente altos como `X1stFlrSF` con 7.39 y `X2ndFlrSF` con 8.15, son valores altos de VIF. Las variables con estos valores, especialmente entre 5 y 10 están correlaciondas con otras. Por último tenemos variables con valores muy altos, por encima de 10, como `YearBuilt` con valores de aproximadamente 10.65 `GarageYrBlt` como `GarageYrBlt` 10.06, `BsmtFinSF1` con VIF de 9.58 y `BsmtUnfSF` y `8.62`. Estos valores indican que existe un problema de multicolinealidad fuerte en estos predictores. Sin embargo, está alta multicolinealidad es razonable en algunos casos, como que el año de construcción y el año de construcción del garaje se relacionen con la edad de la vivienda, y que las medidas de superficie del sótano estén altamente correlacionadas entre sí y posiblemente con la superficie del primer piso.  
+En general aunque muchas de las variables tienen VIF razonablemente bajos, la presencia de algunos predictores con VIF superiores a 10 (o cercanos a esos valores) es una señal de que hay redundancia en la información, lo que podría volver inestables las estimaciones de los coeficientes y dificultar la interpretación individual de estos.
+
+
+```{r correlacion_predictors_fixed, echo=TRUE, warning=FALSE, message=FALSE}
+# Seleccionar únicamente las variables predictoras numéricas eliminando la variable respuesta "Cara"
+predictors_numeric <- model_data %>% 
+  select(-Cara) %>% 
+  select(where(is.numeric))
+
+# Calcular la matriz de correlación utilizando complete.obs
+corr_matrix <- cor(predictors_numeric, use = "complete.obs")
+print("Matriz de correlación (redondeada):")
+print(round(corr_matrix, 2))
+```
+Al observar los valores de la matriz de correlación algunas variables de categoría como el tipo de construcción (`MSSubClass`) muestran correlaciones moderadas con otras medidas; por ejemplo, se observa una correlación negativa moderada (alrededor de –0.32) entre `MSSubClass` y `LotFrontage`, lo que podría sugerir que viviendas pertenecientes a ciertas categorías estructurales presentan diferencias en el frente de lote.  
+Otro grupo de variables que destaca son las relacionadas con la calidad y la condición de la vivienda. En particular, “OverallQual” presenta correlaciones positivas notables con “YearBuilt” (0.53) y “YearRemodAdd” (0.57), lo que indica que a medida que las viviendas son más modernas o han sido remodeladas recientemente, tienden a tener calidades percibidas más altas.  
+Las medidas de área constituyen otro bloque importante. Se observa que “TotalBsmtSF” y “X1stFlrSF” tienen una correlación muy alta (cercana a 0.90), lo cual sugiere que estas dos variables miden aspectos relacionados con el tamaño de la vivienda y que, en gran medida, se solapan en la información que aportan. Este tipo de correlación extremadamente alta es indicativa de redundancia, lo que a su vez contribuye a la multicolinealidad del modelo. De igual manera, otros indicadores de área, como “LotFrontage”, “LotArea” y “GrLivArea”, presentan correlaciones moderadas entre sí, lo que puede ser natural dado que todas miden dimensiones físicas del inmueble.  
+Las variables temporales, “YearBuilt” y “YearRemodAdd”, muestran además una correlación alta (0.69), lo que sugiere que en muchas viviendas el año de construcción y el año de remodelación están estrechamente relacionados. Este patrón es común en muestras donde las remodelaciones suceden con mayor probabilidad en casas relativamente nuevas o donde hay una fuerte tendencia a actualizar la propiedad en un cierto rango de años.  
+Entonces la matriz revela que aunque muchas variables presentan correlaciones moderadas o bajas existen agrupaciones de variables (particularmente las relacionadas con el tamaño y la estructura de la vivienda) que están fuertemente correlacionadas. Esto confirma la preocupación por la multicolinealidad que se detectó a través de los altos valores de VIF en ciertos predictores. 
+La matriz de correlación respalda la presencia de redundancias en la información, especialmente entre variables de área y medidas temporales, lo que sugiere que una reducción de dimensiones o una selección cuidadosa de predictores podría mejorar la interpretabilidad del modelo sin comprometer sustancialmente su capacidad predictiva.  
+
+```{r heatmap_correlacion, echo=FALSE, warning=FALSE, message=FALSE}
+
+
+# Convertir la matriz de correlación en formato largo para facilitar la graficación
+melted_corr <- melt(corr_matrix)
+
+# Graficar la matriz de correlación utilizando un heatmap
+ggplot(data = melted_corr, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", 
+                       midpoint = 0, limit = c(-1, 1), name = "Correlación") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+        axis.title = element_blank()) +
+  labs(title = "Heatmap: Matriz de correlación de los predictores")
+```
+El heatmap de la matriz de correlación confirma de manera visual los hallazgos numéricos previos. Las áreas más intensamente coloreadas en rojo indican pares de variables con correlaciones positivas altas, mientras que los bloques en azul reflejan correlaciones negativas notables. En particular puede apreciarse un clúster de variables que representan la dimensión de la vivienda (por ejemplo, TotalBsmtSF, X1stFlrSF, GarageCars, GarageArea) mostrando altas correlaciones entre sí, lo que respalda la existencia de multicolinealidad detectada por los valores de VIF. De forma similar, otras zonas del mapa exhiben correlaciones elevadas entre las variables temporales (YearBuilt, YearRemodAdd, GarageYrBlt) y los indicadores de calidad (OverallQual, OverallCond). 
+
+5. Utilice el modelo con el conjunto de prueba y determine la eficiencia del algoritmo para clasificar.  
+```{r model_test, echo=FALSE}
+# Predecir las probabilidades para el conjunto de prueba usando el modelo ajustado (full_model_non_alias)
+pred_probs <- predict(full_model_non_alias, newdata = test_data, type = "response")
+
+# Convertir las probabilidades en clases (usamos un umbral de 0.5)
+pred_class <- ifelse(pred_probs >= 0.5, 1, 0)
+
+# Asegurarse que tanto las predicciones como la variable real de respuesta sean factores
+pred_class <- as.factor(pred_class)
+actual_class <- as.factor(test_data$Cara)
+
+# Calcular la matriz de confusión usando la función confusionMatrix del paquete caret
+library(caret)
+conf_mat <- confusionMatrix(pred_class, actual_class)
+print(conf_mat)
+
 ```
