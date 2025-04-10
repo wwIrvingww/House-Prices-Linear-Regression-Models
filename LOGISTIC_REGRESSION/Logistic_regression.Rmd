@@ -22,6 +22,11 @@ test_data <- read.csv("../test_final.csv")
 ```
 Se  cargó la data que se ha usado en entregas anteriores.
 
+```{r remove_columns, include=FALSE}
+train_data <- train_data %>% select(-Condition2, -RoofMatl, -Exterior2nd, -Electrical)
+test_data <- test_data %>% select(-Condition2, -RoofMatl, -Exterior2nd, -Electrical)
+```
+
 ```{r remove_na_columns, include=FALSE}
 pct_na <- sapply(train_data, function(x) mean(is.na(x))*100)
 drop_cols <- names(pct_na[pct_na > 75])
@@ -151,6 +156,22 @@ full_model <- glm(as.factor(Cara) ~ ., data = model_data, family = "binomial")
 summary(full_model)
 ```
 
+```{r definir_predictors_non_alias, echo=TRUE, warning=FALSE, message=FALSE}
+# Extraer los nombres de los coeficientes del modelo original
+coef_names <- names(coef(full_model))
+
+# Identificar los coeficientes que NO están en la matriz de alias
+aliased <- alias(full_model)$Complete
+non_alias <- coef_names[!coef_names %in% rownames(aliased)]
+
+# Excluir el intercepto
+predictors_non_alias <- non_alias[non_alias != "(Intercept)"]
+
+print("Predictors no aliasados:")
+print(predictors_non_alias)
+```
+
+## este no corre
 ```{r settings_model, echo=TRUE}
 # 1. Asegurarse de que 'predictors_non_alias' solo contenga los predictores que efectivamente están en model_data
 available_predictors <- predictors_non_alias[predictors_non_alias %in% names(model_data)]
@@ -174,7 +195,7 @@ summary(full_model_non_alias)
 
 
 ```
-
+## este tampoco
 ```{r vif_stimate, echo=TRUE}
 # 1. Identificar los coeficientes aliasados (colineales) del modelo original
 aliased <- alias(full_model)$Complete
@@ -264,9 +285,17 @@ pred_class <- ifelse(pred_probs >= 0.5, 1, 0)
 pred_class <- as.factor(pred_class)
 actual_class <- as.factor(test_data$Cara)
 
-# Calcular la matriz de confusión usando la función confusionMatrix del paquete caret
-library(caret)
 conf_mat <- confusionMatrix(pred_class, actual_class)
 print(conf_mat)
 
 ```
+La matriz de confusión y las estadísticas resultantes indican que el modelo de clasificación binaria (para predecir si una vivienda es "cara" o no) tiene un desempeño robusto. Con una **exactitud del 86.33%** y un intervalo de confianza del 95% entre 82.76% y 89.41%, el modelo supera significativamente la tasa de no información (66.06%), lo que se refleja en un p-valor muy bajo (< 2.2e-16) al comparar con la tasa de no información. Además, el valor de **Kappa (0.6806)** sugiere un acuerdo sustancial entre las predicciones y las observaciones reales, más allá de lo que se esperaría por azar.
+
+En detalle, la **sensibilidad del 94.48%** (dado que la clase positiva se define como la etiqueta 0) indica que el modelo identifica correctamente la gran mayoría de las viviendas que pertenecen a la clase positiva. La **especificidad del 70.47%** evidencia que, aunque la identificación de la clase contraria (viviendas "cara", en este contexto) es moderada, el desempeño en general es bastante equilibrado, como lo refleja la **exactitud balanceada del 82.48%**. Los valores altos de las métricas de valor predictivo (Pos Pred Value: 86.16% y Neg Pred Value: 86.78%) refuerzan la idea de que el modelo es confiable al asignar correctamente la clase a nuevas observaciones.
+
+Finalmente, el resultado del Test de McNemar (p-value = 0.0004909) indica que las discrepancias en los errores de clasificación son estadísticamente significativas, lo que añade evidencia a la robustez del modelo. En conjunto, estos resultados respaldan que el modelo tiene una capacidad predictiva sólida para discriminar entre viviendas clasificadas como "cara" y "no cara".
+
+6. Explique si hay sobreajuste (overfitting) o no (recuerde usar para esto los errores del conjunto de prueba
+y de entrenamiento). Muestre las curvas de aprendizaje usando los errores de los conjuntos de
+entrenamiento y prueba
+
