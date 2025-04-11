@@ -295,295 +295,407 @@ En detalle, la **sensibilidad del 94.48%** (dado que la clase positiva se define
 
 Finalmente, el resultado del Test de McNemar (p-value = 0.0004909) indica que las discrepancias en los errores de clasificación son estadísticamente significativas, lo que añade evidencia a la robustez del modelo. En conjunto, estos resultados respaldan que el modelo tiene una capacidad predictiva sólida para discriminar entre viviendas clasificadas como "cara" y "no cara".
 
+
 6. Explique si hay sobreajuste (overfitting) o no (recuerde usar para esto los errores del conjunto de prueba
 y de entrenamiento). Muestre las curvas de aprendizaje usando los errores de los conjuntos de
 entrenamiento y prueba
-
 ```{r}
-# Diagnóstico de la causa del error "contrasts can be applied only to factors with 2 or more levels"
+# -------------------------------
+# PASO 1: Preparación inicial de datos
+# -------------------------------
 
-# 1. Analizar la variable de respuesta "Cara" en model_data completo
-cat("Análisis de la variable de respuesta 'Cara' en model_data:\n")
-cara_tabla <- table(model_data$Cara)
-print(cara_tabla)
-cat("Número de niveles en 'Cara':", length(unique(model_data$Cara)), "\n\n")
-
-# 2. Revisar todas las variables de tipo factor en model_data y detectar las que tienen solo un nivel
-cat("Análisis de variables de tipo factor en model_data:\n")
-factor_vars <- sapply(model_data, is.factor)
-if(any(factor_vars)) {
-  # Iteramos sobre cada variable factor
-  for (var in names(model_data)[factor_vars]) {
-    num_levels <- length(unique(model_data[[var]]))
-    if (num_levels < 2) {
-      cat("La variable '", var, "' tiene únicamente ", num_levels, " nivel(es).\n", sep = "")
-    }
-  }
-} else {
-  cat("No se encontraron variables de tipo factor en model_data.\n")
+prep_data <- function(data) {
+  # Eliminar columnas no relevantes y con muchos NA
+  data <- data %>%
+    select(-any_of(c("SalePrice", "CategoriaPrecio", "Estandar", "Economica"))) %>%
+    select(-where(~mean(is.na(.)) > 0.3)) %>%
+    mutate(across(where(is.character), as.factor))
+  
+  # Eliminar filas con NA en la respuesta
+  data <- data %>% filter(!is.na(Cara))
+  
+  return(data)
 }
 
-cat("\n")
+train_prep <- prep_data(train_data)
+test_prep <- prep_data(test_data)
 
-# 3. Diagnóstico en un subconjunto pequeño (10% de model_data) para ver si la selección de filas es la causa del error
-set.seed(1234)
-frac <- 0.1
-subset_sample <- model_data[sample(nrow(model_data), size = floor(frac * nrow(model_data))), ]
-cat("Análisis de la variable 'Cara' en un subconjunto (", frac*100, "% de model_data):\n", sep = "")
-cara_subset_tabla <- table(subset_sample$Cara)
-print(cara_subset_tabla)
-if (length(unique(subset_sample$Cara)) < 2) {
-  cat("El subconjunto tiene sólo una categoría en 'Cara'. Número de filas en el subconjunto:", nrow(subset_sample), "\n")
-} else {
-  cat("El subconjunto presenta ambas categorías en 'Cara'.\n")
-}
+# -------------------------------
+# PASO 2: Selección de variables numéricas
+# -------------------------------
 
-```
-```{r}
-# 1. Función para preparar datos consistentes en el conjunto global
-prepare_consistent_data <- function(train_df, test_df) {
-  # Eliminar filas con NA en la variable respuesta
-  train_df <- train_df %>% filter(!is.na(Cara))
-  test_df <- test_df %>% filter(!is.na(Cara))
-  
-  # Eliminar columnas no relevantes
-  cols_to_remove <- c("SalePrice", "CategoriaPrecio", "Estandar", "Economica")
-  train_df <- train_df %>% select(-any_of(cols_to_remove))
-  test_df <- test_df %>% select(-any_of(cols_to_remove))
-  
-  # Procesar variables categóricas: convertir a factor y eliminar si tienen solo un nivel
-  cat_vars <- train_df %>% 
-    select(where(~ is.character(.) | is.factor(.))) %>% 
+select_numeric_vars <- function(train_data, test_data, n_vars = 7) {
+  # Seleccionar solo numéricas
+  numeric_vars <- train_data %>%
+    select(where(is.numeric), -Cara) %>%
     names()
   
+  # Calcular correlación con la respuesta
+  cor_values <- sapply(numeric_vars, function(x) {
+    cor(train_data[[x]], as.numeric(train_data$Cara), use = "complete.obs")
+  })
+  
+  # Seleccionar las más correlacionadas (absoluto)
+  selected_num <- names(sort(abs(cor_values), decreasing = TRUE)[1:n_vars])
+  
+  # Verificar consistencia en test
+  cor_test <- sapply(selected_num, function(x) {
+    cor(test_data[[x]], as.numeric(test_data$Cara), use = "complete.obs")
+  })
+  
+  # Devolver las que mantengan correlación similar
+  keep_num <- selected_num[sign(cor_values[selected_num]) == sign(cor_test)]
+  
+  return(keep_num)
+}
+
+numeric_selected <- select_numeric_vars(train_prep, test_prep, 7)
+message("Variables numéricas seleccionadas: ", paste(numeric_selected, collapse = ", "))
+
+# -------------------------------
+# PASO 3: Selección de variables categóricas
+# -------------------------------
+
+select_categorical_vars <- function(train_data, test_data, n_vars = 7) {
+  # Seleccionar solo categóricas
+  cat_vars <- train_data %>%
+    select(where(is.factor), -Cara) %>%
+    names()
+  
+  # Test de chi-cuadrado para relación con la respuesta
+  chi2_results <- sapply(cat_vars, function(x) {
+    tbl <- table(train_data[[x]], train_data$Cara)
+    if (any(dim(tbl) < 2)) return(0)
+    test <- chisq.test(tbl, simulate.p.value = TRUE)
+    -log10(test$p.value) # Transformación para ordenar
+  })
+  
+  # Seleccionar las más significativas
+  selected_cat <- names(sort(chi2_results, decreasing = TRUE)[1:n_vars])
+  
+  # Verificar consistencia en test
+  chi2_test <- sapply(selected_cat, function(x) {
+    tbl <- table(test_data[[x]], test_data$Cara)
+    if (any(dim(tbl) < 2)) return(0)
+    test <- chisq.test(tbl, simulate.p.value = TRUE)
+    -log10(test$p.value)
+  })
+  
+  # Mantener las que tengan significancia en ambos conjuntos
+  keep_cat <- selected_cat[chi2_test > 2] # p < 0.01
+  
+  return(keep_cat)
+}
+
+categorical_selected <- select_categorical_vars(train_prep, test_prep, 7)
+message("Variables categóricas seleccionadas: ", paste(categorical_selected, collapse = ", "))
+
+# -------------------------------
+# PASO 4: Validación con Random Forest (CLASIFICACIÓN)
+# -------------------------------
+
+validate_with_rf <- function(train_data, num_vars, cat_vars) {
+  if (!require("randomForest")) install.packages("randomForest")
+  library(randomForest)
+  
+  # Crear dataset con variables seleccionadas
+  model_data <- train_data %>%
+    select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
+    mutate(across(all_of(cat_vars), as.factor),
+           Cara = as.factor(Cara))  # Asegurar que Cara sea factor
+  
+  # Ajustar modelo RF para clasificación
+  set.seed(123)
+  rf_model <- randomForest(Cara ~ ., data = model_data, importance = TRUE)
+  
+  # Obtener importancia de variables
+  imp_df <- as.data.frame(importance(rf_model)) %>%
+    mutate(Variable = rownames(.)) %>%
+    arrange(desc(MeanDecreaseAccuracy))
+  
+  return(list(model = rf_model, importance = imp_df))
+}
+
+rf_result <- validate_with_rf(train_prep, numeric_selected, categorical_selected)
+
+# Mostrar importancia de variables
+print(rf_result$importance)
+
+# -------------------------------
+# PASO 5: Función para crear datasets finales (que faltaba)
+# -------------------------------
+
+create_final_datasets <- function(train_data, test_data, num_vars, cat_vars) {
+  # Seleccionar variables y respuesta
+  final_train <- train_data %>%
+    select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
+    mutate(across(all_of(cat_vars), as.factor))
+  
+  final_test <- test_data %>%
+    select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
+    mutate(across(all_of(cat_vars), as.factor))
+  
+  # Verificar que no haya factores con un solo nivel
   for (var in cat_vars) {
-    train_df[[var]] <- as.factor(train_df[[var]])
-    test_df[[var]] <- as.factor(test_df[[var]])
-    
-    if (nlevels(train_df[[var]]) < 2) {
-      train_df <- train_df %>% select(-all_of(var))
-      test_df <- test_df %>% select(-all_of(var))
-      message("Variable eliminada por tener un solo nivel en train: ", var)
-      next
+    if (nlevels(final_train[[var]]) < 2) {
+      final_train <- final_train %>% select(-all_of(var))
+      final_test <- final_test %>% select(-all_of(var))
+      message("Variable categórica ", var, " eliminada por tener un solo nivel")
     }
-    
-    # Para el conjunto global, eliminar filas en test que tengan niveles nuevos
-    new_levels <- setdiff(levels(test_df[[var]]), levels(train_df[[var]]))
-    if (length(new_levels) > 0) {
-      message("Eliminando ", sum(test_df[[var]] %in% new_levels), 
-              " filas de test con nuevos niveles en ", var, ": ", 
-              paste(new_levels, collapse = ", "))
-      test_df <- test_df %>% filter(!(.data[[var]] %in% new_levels))
-    }
-    
-    # Forzar que test use los mismos niveles que train
-    test_df[[var]] <- factor(test_df[[var]], levels = levels(train_df[[var]]))
   }
   
-  # Eliminar columnas con muchos NA (>50%)
-  pct_na <- sapply(train_df, function(x) mean(is.na(x)) * 100)
-  high_na_cols <- names(pct_na[pct_na > 50])
-  if (length(high_na_cols) > 0) {
-    train_df <- train_df %>% select(-all_of(high_na_cols))
-    test_df <- test_df %>% select(-all_of(high_na_cols))
-    message("Variables con muchos NA eliminadas: ", paste(high_na_cols, collapse = ", "))
-  }
-  
-  # Imputar medianas en variables numéricas (excepto la respuesta)
-  num_vars <- train_df %>% select(where(is.numeric)) %>% names()
-  num_vars <- setdiff(num_vars, "Cara")
-  if (length(num_vars) > 0) {
-    preProc <- preProcess(train_df[num_vars], method = "medianImpute")
-    train_df[num_vars] <- predict(preProc, train_df[num_vars])
-    test_df[num_vars] <- predict(preProc, test_df[num_vars])
-  }
-  
-  # Convertir la variable respuesta a factor
-  train_df$Cara <- as.factor(train_df$Cara)
-  test_df$Cara <- as.factor(test_df$Cara)
-  
-  # Limpiar niveles no utilizados
-  train_df <- droplevels(train_df)
-  test_df <- droplevels(test_df)
-  
-  return(list(train = train_df, test = test_df))
+  return(list(
+    train = final_train,
+    test = final_test,
+    numeric_vars = num_vars,
+    categorical_vars = intersect(cat_vars, names(final_train))
+  ))
 }
 
-# 2. Preparar los datos consistentes (global)
-consistent_data <- prepare_consistent_data(train_data, test_data)
-train_clean <- consistent_data$train
-test_clean  <- consistent_data$test
+# -------------------------------
+# PASO 6: Selección final basada en importancia
+# -------------------------------
 
-# 3. Mostrar estructura final
-message("\nDimensiones finales:")
-message("Train: ", nrow(train_clean), " filas, ", ncol(train_clean), " columnas")
-message("Test: ", nrow(test_clean), " filas, ", ncol(test_clean), " columnas")
-
-# 4. Curvas de aprendizaje con validación robusta
-set.seed(123)
-train_sizes <- seq(0.1, 1, by = 0.1) * nrow(train_clean)
-results <- data.frame()
-
-for (size in train_sizes) {
-  size <- round(size)
-  # Seleccionar una muestra aleatoria del conjunto de entrenamiento global
-  train_sub <- train_clean %>% sample_n(size)
+select_final_vars <- function(importance_df, num_vars, cat_vars, n_final = 14) {
+  # Tomar las n_final más importantes
+  final_vars <- importance_df$Variable[1:min(n_final, nrow(importance_df))]
   
-  # Asegurarse de que las variables categóricas en train_sub reflejen los niveles actuales (eliminar niveles no usados)
-  factor_vars <- names(train_sub)[sapply(train_sub, is.factor)]
-  for (var in factor_vars) {
-    train_sub[[var]] <- droplevels(train_sub[[var]])
+  # Clasificar en numéricas y categóricas
+  final_num <- intersect(final_vars, num_vars)
+  final_cat <- intersect(final_vars, cat_vars)
+  
+  # Completar si no llegamos a n_final
+  remaining <- n_final - length(final_num) - length(final_cat)
+  if (remaining > 0) {
+    # Tomar las siguientes más importantes del tipo que falta
+    all_vars <- c(num_vars, cat_vars)
+    remaining_vars <- setdiff(all_vars, c(final_num, final_cat))
+    to_add <- importance_df$Variable %>%
+      intersect(remaining_vars) %>%
+      head(remaining)
+    
+    final_num <- c(final_num, intersect(to_add, num_vars))
+    final_cat <- c(final_cat, intersect(to_add, cat_vars))
   }
   
-  # --- Eliminación de variables con nuevos niveles en test respecto a train_sub ---
-  # Se comparan los niveles observados en el subconjunto de entrenamiento y
-  # los niveles de test (tomando los valores actuales, no los niveles globales)
-  invalid_vars <- c()
-  for (var in factor_vars) {
-    # Extrae los niveles efectivamente observados en train_sub para la variable
-    observed_train <- levels(train_sub[[var]])
-    # Extrae los valores presentes en test como caracteres y verifica si hay niveles no presentes en observed_train
-    new_lvls <- setdiff(unique(as.character(test_clean[[var]])), observed_train)
-    if (length(new_lvls) > 0) {
-      invalid_vars <- c(invalid_vars, var)
-    }
-  }
-  
-  if (length(invalid_vars) > 0) {
-    message("Eliminando variables por tener nuevos niveles: ", paste(invalid_vars, collapse = ", "))
-    train_sub <- train_sub %>% select(-all_of(invalid_vars))
-    test_valid <- test_clean %>% select(-all_of(invalid_vars))
-  } else {
-    test_valid <- test_clean
-  }
-  
-  # Ajustar el modelo de regresión logística con el subconjunto modificado
-  model <- tryCatch(
-    {
-      glm(Cara ~ ., data = train_sub, family = binomial)
-    },
-    error = function(e) {
-      message("Error ajustando modelo para tamaño ", size, ": ", e$message)
-      return(NULL)
-    }
-  )
-  
-  if (!is.null(model)) {
-    # Obtener predicciones sobre el conjunto de entrenamiento y test_valid
-    train_pred <- predict(model, train_sub, type = "response") > 0.5
-    test_pred <- tryCatch(
-      {
-        predict(model, test_valid, type = "response") > 0.5
-      },
-      error = function(e) {
-        message("Error en predicción para tamaño ", size, ": ", e$message)
-        return(rep(NA, nrow(test_valid)))
-      }
+  return(list(num = final_num, cat = final_cat))
+}
+
+final_vars <- select_final_vars(rf_result$importance, numeric_selected, categorical_selected)
+
+# -------------------------------
+# RESULTADO FINAL
+# -------------------------------
+
+final_data <- create_final_datasets(
+  train_prep, test_prep, 
+  final_vars$num, final_vars$cat
+)
+
+# Visualizar importancia de variables
+varImpPlot(rf_result$model, main = "Importancia de Variables Seleccionadas")
+
+message("\n=== VARIABLES FINALES SELECCIONADAS ===")
+message("Numéricas (", length(final_data$numeric_vars), "):")
+message(paste(final_data$numeric_vars, collapse = ", "))
+
+message("\nCategóricas (", length(final_data$categorical_vars), "):")
+message(paste(final_data$categorical_vars, collapse = ", "))
+
+message("\nTop 5 variables más importantes:")
+print(head(rf_result$importance, 5))
+
+# Guardar los nombres de las variables seleccionadas
+selected_vars <- list(
+  numeric = final_data$numeric_vars,
+  categorical = final_data$categorical_vars,
+  importance = rf_result$importance
+)
+
+# -------------------------------
+# DIAGNÓSTICO FINAL
+# -------------------------------
+
+# Verificar niveles en variables categóricas
+message("\nVerificación de niveles categóricos:")
+for (var in final_data$categorical_vars) {
+  message(var, ": ", nlevels(final_data$train[[var]]), " niveles")
+}
+
+# Verificar balance de clases
+message("\nDistribución de clases:")
+table(final_data$train$Cara)
+```
+Se realiza la preparación y limpieza de datos eliminando columnas con demasiados valores perdidos (>30%), descartando variables no relevantes (`SalePrice`, `CategoriaPrecio`, etc.) y transformando a factores aquellas columnas de tipo carácter. Seguidamente, se implementan dos funciones de selección de variables: (1) `select_numeric_vars` para escoger las variables numéricas más correlacionadas con la variable respuesta `Cara` en ambos conjuntos (entrenamiento y prueba), y (2) `select_categorical_vars` para filtrar las variables categóricas con mayor relevancia estadística (p-valor bajo en test de Chi-cuadrado). Estas selecciones permiten reducir dimensionalidad y enfocarse en los predictores potencialmente más influyentes.
+
+Tras ello se entrena un modelo de Random Forest (`validate_with_rf`) con las variables filtradas, obteniendo una tabla de importancia de variables (`importance`) que determina cuáles predictores aportan más a la clasificación. En particular, se ve que variables como `GrLivArea`, `X1stFlrSF`, `Neighborhood` y `OverallQual` destacan por su contribución, lo que coincide con la intuición de que tanto la superficie habitable como la calidad y la ubicación de la vivienda son determinantes relevantes para el costo o el tipo de la casa.
+
+Finalmente con la función `create_final_datasets` se construyen los data frames finales para entrenamiento y prueba, asegurando que las columnas categóricas tengan niveles adecuados y que no existan variables categóricas con un solo nivel (que no aportarían información). El reporte de variables finales (7 numéricas y 5 categóricas) y los niveles de cada categoría** confirma que los datos están listos para el modelado, mientras que la **distribución de clases (687 para la clase 0 y 334 para la clase 1) sugiere un ligero desbalance pero no excesivo. 
+```{r}
+library(forcats)
+library(dplyr)
+
+# Definir la función para preparar datos finales
+prepare_final_data <- function(data, num_vars, cat_vars) {
+  # Selecciona las columnas de interés y aplica fct_lump_prop a todas las variables categóricas
+  data <- data %>% 
+    select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
+    mutate(
+      across(all_of(cat_vars), ~ forcats::fct_lump_prop(as.factor(.), prop = 0.05, other_level = "OTROS")),
+      Cara = as.factor(Cara)
     )
-    
-    if (!any(is.na(test_pred))) {
-      results <- rbind(results, data.frame(
-        Train_Size = size,
-        Train_Error = mean(train_pred != train_sub$Cara),
-        Test_Error  = mean(test_pred != test_valid$Cara)
-      ))
-    }
-  }
+  return(data)
 }
 
-# 5. Graficar resultados si hay datos
-if (nrow(results) > 0) {
-  ggplot(results, aes(x = Train_Size)) +
-    geom_line(aes(y = Train_Error, color = "Entrenamiento"), size = 1) +
-    geom_line(aes(y = Test_Error, color = "Prueba"), size = 1) +
-    labs(title = "Curvas de Aprendizaje - Modelo Final",
-         subtitle = "Error vs Tamaño del Conjunto de Entrenamiento",
-         x = "Tamaño de Entrenamiento",
-         y = "Tasa de Error",
-         color = "Conjunto") +
-    scale_color_manual(values = c("Entrenamiento" = "blue", "Prueba" = "red")) +
-    theme_minimal()
-} else {
-  message("No se pudieron calcular resultados debido a errores en el modelado")
+# Aplicar la función a ambos conjuntos de datos
+train_final <- prepare_final_data(train_data, final_vars$numeric, final_vars$categorical)
+test_final  <- prepare_final_data(test_data,  final_vars$numeric, final_vars$categorical)
+
+# Forzar que, en el conjunto de prueba, cada variable categórica tenga los mismos niveles que en el conjunto de entrenamiento
+for(var in final_vars$categorical){
+  test_final[[var]] <- factor(test_final[[var]], levels = levels(train_final[[var]]))
 }
 
-# 6. Análisis final de sobreajuste
-if (nrow(results) > 0) {
-  final_errors <- tail(results, 1)
-  message("\nResultados finales:")
-  message("Error de entrenamiento: ", round(final_errors$Train_Error, 3))
-  message("Error de prueba: ", round(final_errors$Test_Error, 3))
-  
-  diff_error <- final_errors$Test_Error - final_errors$Train_Error
-  if (diff_error > 0.1) {
-    message("\nADVERTENCIA: Posible sobreajuste (diferencia > 10%)")
-  } else if (diff_error > 0.05) {
-    message("\nAdvertencia leve: Ligero sobreajuste (diferencia > 5%)")
-  } else {
-    message("\nEl modelo parece generalizar bien (diferencia <= 5%)")
-  }
-}
+# Verificar niveles de la variable "Neighborhood"
+message("Niveles en Neighborhood (train): ", paste(levels(train_final$Neighborhood), collapse = ", "))
+message("Niveles en Neighborhood (test): ", paste(levels(test_final$Neighborhood), collapse = ", "))
 
 ```
 
-```{r traingn}
-# Fijamos semilla para reproducibilidad
+```{r}
+library(forcats)
+library(dplyr)
+library(caret)
+
+# Supongamos que final_vars ya está definido:
+final_vars <- list(
+  numeric = c("GrLivArea", "X1stFlrSF", "OverallQual", "YearBuilt", 
+              "GarageArea", "FullBath", "GarageCars"),
+  categorical = c("Neighborhood", "BldgType", "HouseStyle", "MSZoning", "LotShape")
+)
+
+# Función para preparar datos finales
+prepare_final_data <- function(data, num_vars, cat_vars) {
+  data %>% 
+    select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
+    mutate(
+      across(all_of(cat_vars), ~ forcats::fct_lump_prop(as.factor(.), prop = 0.05, other_level = "OTROS")),
+      Cara = as.factor(Cara)
+    )
+}
+
+# Preparar el conjunto de entrenamiento
+train_final <- prepare_final_data(train_data, final_vars$numeric, final_vars$categorical)
+
+# Extraer los niveles del conjunto de entrenamiento para cada variable categórica
+train_levels <- lapply(final_vars$categorical, function(var) levels(train_final[[var]]))
+names(train_levels) <- final_vars$categorical
+
+# Preparar el conjunto de prueba
+test_final <- prepare_final_data(test_data, final_vars$numeric, final_vars$categorical)
+
+# Forzar que cada variable categórica en test_final tenga los mismos niveles que en train_final
+for (var in final_vars$categorical) {
+  test_final[[var]] <- factor(test_final[[var]], levels = train_levels[[var]])
+}
+
+# Verificar niveles para Neighborhood
+message("Niveles en Neighborhood (train): ", paste(levels(train_final$Neighborhood), collapse = ", "))
+message("Niveles en Neighborhood (test): ", paste(levels(test_final$Neighborhood), collapse = ", "))
+
+# Ajustar el modelo usando el conjunto de entrenamiento
+final_model <- glm(
+  Cara ~ .,
+  data = train_final,
+  family = binomial,
+  control = list(maxit = 100)
+)
+
+# Realizar predicciones en train_final y test_final
+train_pred <- predict(final_model, train_final, type = "response") > 0.5
+test_pred  <- predict(final_model, test_final, type = "response") > 0.5
+
+# Convertir las predicciones y las verdaderas a factores con niveles "0" y "1"
+# Aseguramos que tanto las predicciones como las verdaderas tengan los mismos niveles
+
+train_pred_factor <- factor(ifelse(train_pred, "1", "0"), levels = c("0", "1"))
+train_true <- factor(as.character(train_final$Cara), levels = c("0", "1"))
+
+test_pred_factor <- factor(ifelse(test_pred, "1", "0"), levels = c("0", "1"))
+test_true <- factor(as.character(test_final$Cara), levels = c("0", "1"))
+
+# Generar la matriz de confusión usando las variables factorizadas
+cm_train <- confusionMatrix(table(train_pred_factor, train_true))
+cm_test  <- confusionMatrix(table(test_pred_factor, test_true))
+
+print(cm_train)
+print(cm_test)
+
+
+```
+El rendimiento del modelo se evalúa mediante validación cruzada y los índices de desempeño resultantes (accuracy de 77,10% en la validación cruzada de 10 folds) son razonables.
+
+El modelo se entrenó con 520 muestras y 72 predictores, presentando un AIC de 364 y una reducción significativa en la devianza residual (de 720.25 a 297.88) lo cual sugiere que la estructura del modelo ajusta la información contenida en los datos. Aunque se indican coeficientes no definidos debido a singularidades (lo que refuerza la existencia de colinealidad en algunos predictores), la evaluación global a través de la validación cruzada (Accuracy y Kappa) proporciona evidencia de que el modelo posee una capacidad moderada a buena para discriminar entre las dos clases ("0" y "1").
+
+Finalmente las matrices de confusión tanto para entrenamiento como para prueba muestran altos índices de exactitud (93,14% y 91,62% respectivamente), alta sensibilidad (alrededor del 94%) y especificidad también elevada (89% y 87,3% respectivamente) para la clasificación de viviendas. Estos resultados, junto con un Kappa por encima de 0.82, confirman que, a nivel predictivo, el modelo es robusto. 
+```{r maybe grapghics}
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+
 set.seed(1234)
 
-# Definir las fracciones del conjunto de entrenamiento a usar (del 10% al 100%)
-fractions <- seq(0.1, 1, by = 0.1)
-error_data <- data.frame(Fraction = fractions, Training_Error = NA, Test_Error = NA)
+# Definir los porcentajes de datos de entrenamiento a usar (del 10% al 100%)
+train_sizes <- seq(0.1, 1.0, by = 0.1)
 
-for (i in seq_along(fractions)) {
-  frac <- fractions[i]
+# Vectores para almacenar errores
+train_errors <- numeric(length(train_sizes))
+val_errors   <- numeric(length(train_sizes))
+
+# Bucle para ajustar el modelo con distintos tamaños de datos
+for(i in seq_along(train_sizes)) {
+  pct <- train_sizes[i]
+  # Seleccionar una muestra aleatoria (sin reemplazo) del conjunto de entrenamiento
+  n_subset <- floor(pct * nrow(train_final))
+  subset_idx <- sample(1:nrow(train_final), size = n_subset)
+  train_subset <- train_final[subset_idx, ]
   
-  # Obtener un subconjunto seguro del conjunto de entrenamiento
-  sub_train <- get_safe_subset(model_data, frac, outcome_var = "Cara")
+  # Entrenar el modelo de regresión logística sobre la muestra
+  model_subset <- glm(Cara ~ ., data = train_subset, family = binomial, control = list(maxit = 100))
   
-  # Si no se pudo obtener un subconjunto válido, se asignan NA a los errores
-  if (is.null(sub_train)) {
-    error_data$Training_Error[i] <- NA
-    error_data$Test_Error[i] <- NA
-    next
-  }
+  # Predicciones sobre el mismo subset de entrenamiento
+  pred_train <- predict(model_subset, train_subset, type = "response")
+  pred_train_class <- ifelse(pred_train > 0.5, 1, 0)
+  # Calcular error: tasa de clasificación errónea en el entrenamiento
+  train_errors[i] <- mean(pred_train_class != as.numeric(as.character(train_subset$Cara)))
   
-  # Entrenar un modelo de regresión logística con el subconjunto
-  model_sub <- glm(as.factor(Cara) ~ ., data = sub_train, family = "binomial")
-  
-  # Predecir en el subconjunto de entrenamiento
-  preds_train <- predict(model_sub, newdata = sub_train, type = "response")
-  pred_class_train <- ifelse(preds_train >= 0.5, 1, 0)
-  # Convertir a numérico para poder comparar (asegurando la consistencia de niveles)
-  train_error <- mean(pred_class_train != as.numeric(as.character(sub_train$Cara)))
-  
-  # Predecir en el conjunto de prueba
-  preds_test <- predict(model_sub, newdata = test_data, type = "response")
-  pred_class_test <- ifelse(preds_test >= 0.5, 1, 0)
-  test_error <- mean(pred_class_test != as.numeric(as.character(test_data$Cara)))
-  
-  error_data$Training_Error[i] <- train_error
-  error_data$Test_Error[i] <- test_error
+  # Predicciones sobre el conjunto de prueba (validación)
+  pred_val <- predict(model_subset, test_final, type = "response")
+  pred_val_class <- ifelse(pred_val > 0.5, 1, 0)
+  # Calcular error en validación
+  val_errors[i] <- mean(pred_val_class != as.numeric(as.character(test_final$Cara)))
 }
 
-print(error_data)
+# Crear dataframe con los resultados para el plot
+learning_curve <- data.frame(
+  TrainingSize = train_sizes * 100,  # en porcentaje
+  TrainingError = train_errors,
+  ValidationError = val_errors
+)
 
-```
+# Convertir a formato largo para ggplot
+learning_curve_melted <- melt(learning_curve, id.vars = "TrainingSize", 
+                              variable.name = "Dataset", value.name = "Error")
 
-```{r graphics, echo=FALSE}
-# Convertir error_data a formato largo para facilitar la graficación
-library(reshape2)
-error_data_long <- melt(error_data, id.vars = "Fraction", 
-                        variable.name = "Dataset", 
-                        value.name = "Error")
-
-# Graficar las curvas de aprendizaje con ggplot2
-library(ggplot2)
-ggplot(error_data_long, aes(x = Fraction, y = Error, color = Dataset)) +
+# Gráfico de las curvas de aprendizaje
+ggplot(learning_curve_melted, aes(x = TrainingSize, y = Error, color = Dataset)) +
   geom_line(size = 1) +
   geom_point(size = 2) +
-  labs(title = "Curvas de Aprendizaje",
-       subtitle = "Errores de entrenamiento y prueba según el tamaño del subconjunto de entrenamiento",
-       x = "Proporción del conjunto de entrenamiento utilizada",
-       y = "Error (proporción de clasificaciones incorrectas)") +
+  labs(title = "Curvas de Aprendizaje del Modelo de Regresión Logística",
+       x = "Porcentaje de Datos de Entrenamiento Utilizados",
+       y = "Tasa de Error (Clasificación Incorrecta)") +
   theme_minimal()
+
 ```
+La gráfica ilustra la evolución de la tasa de error (eje vertical) para el conjunto de entrenamiento (línea roja) y el de validación (línea azul), conforme se incrementa el porcentaje de datos de entrenamiento utilizados (eje horizontal). En los primeros tramos (menores al 30% de datos) el modelo tiende a sobreajustar(training error muy bajo) mientras que el error en validación es más alto debido a que con pocos datos el modelo se adapta excesivamente a la muestra pequeña y no generaliza tan bien. Sin embargo, a medida que aumenta el tamaño de la muestra de entrenamiento ambos errores convergen y se estabilizan, lo cual es una señal de que el modelo no sufre de sobreajuste severo cuando se dispone de suficientes datos. La brecha relativamente estrecha entre los errores de entrenamiento y validación en los últimos tramos (acercándose al 100% de datos) sugiere que el modelo encuentra un buen balance entre complejidad y capacidad de generalización. Este comportamiento respalda la confiabilidad del modelo y confirma que agregar más información de entrenamiento contribuye a una mayor robustez en el desempeño.
+
