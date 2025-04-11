@@ -12,22 +12,25 @@ library(caret)
 library(car)
 library(reshape2)
 library(ggplot2)
+library(forcats)
+
 ```
 
 2.Use los mismos conjuntos de entrenamiento y prueba que utilizó en las hojas anteriores.
-```{r load_data, include=FALSE}
+```{r load_data, echo=FALSE}
 #train data ya tiene el 70 y test_data el 30%
 train_data <- read.csv("../train_final.csv")
 test_data <- read.csv("../test_final.csv")
 ```
 Se  cargó la data que se ha usado en entregas anteriores.
 
-```{r remove_columns, include=FALSE}
+```{r remove_columns, echo=FALSE}
 train_data <- train_data %>% select(-Condition2, -RoofMatl, -Exterior2nd, -Electrical)
 test_data <- test_data %>% select(-Condition2, -RoofMatl, -Exterior2nd, -Electrical)
 ```
+Se removieron las columnas problematicas
 
-```{r remove_na_columns, include=FALSE}
+```{r remove_na_columns, echo=FALSE}
 pct_na <- sapply(train_data, function(x) mean(is.na(x))*100)
 drop_cols <- names(pct_na[pct_na > 75])
 train_data <- train_data %>% select(-all_of(drop_cols))
@@ -35,7 +38,7 @@ test_data  <- test_data  %>% select(-all_of(drop_cols))
 ```
 Se remueven las columnas que no dan información útil.
 
-```{r discretization, include=FALSE}
+```{r discretization, echo=FALSE}
 breaks <- quantile(train_data$SalePrice, probs = c(0,1/3,2/3,1), na.rm=TRUE)
 labels <- c("barata","estandar","cara")
 
@@ -46,7 +49,7 @@ test_data$CategoriaPrecio  <- cut(test_data$SalePrice,  breaks=breaks, labels=la
 Creamos las tres categorías de las casas (barata, estándar, cara.)
 
 1. Cree una variable dicotómica por cada una de las categorías de la variable respuesta categórica que creó en hojas anteriores. Debería tener 3 variables dicotómicas (valores 0 y 1) una que diga si la vivienda es cara o no, media o no, económica o no.
-```{r dicotomic_variable, echo=FALSE}
+```{r dicotomic_variable, echo=TRUE}
 # Para el conjunto de entrenamiento
 train_data <- train_data %>%
   mutate(
@@ -71,10 +74,8 @@ que debe fijar que los conjuntos de entrenamiento y prueba sean los mismos siemp
 código. Use validación cruzada.
 
 ```{r process_data, echo=FALSE}
-# 1. Selección de variables numéricas
 numeric_cols <- train_data %>% select(where(is.numeric)) %>% names()
 
-# 2. Selección de variables categóricas
 all_cat <- train_data %>% select(where(~!is.numeric(.))) %>% names()
 valid_cat <- all_cat[
   sapply(all_cat, function(col) {
@@ -82,24 +83,21 @@ valid_cat <- all_cat[
   })
 ]
 
-# 3. Imputación de valores perdidos en variables numéricas usando la mediana
 preNum <- preProcess(train_data[numeric_cols], method = "medianImpute")
 train_data[numeric_cols] <- predict(preNum, train_data[numeric_cols])
 test_data[numeric_cols]  <- predict(preNum, test_data[numeric_cols])
 
-# 4. Codificación (one-hot encoding) de variables categóricas
 encoder <- dummyVars(~ ., data = train_data[valid_cat], fullRank = TRUE)
 train_cat <- predict(encoder, train_data[valid_cat]) %>% as.data.frame()
 test_cat  <- predict(encoder, test_data[valid_cat]) %>% as.data.frame()
 
-# 5. Asegurarse que las columnas codificadas en el conjunto de prueba sean idénticas a las del entrenamiento
+
 missing <- setdiff(names(train_cat), names(test_cat))
 if(length(missing) > 0){
   test_cat[missing] <- 0
   test_cat <- test_cat[names(train_cat)]
 }
 
-# 6. Unir las variables numéricas procesadas, las variables dummy y la variable respuesta
 train_encoded <- bind_cols(train_data[numeric_cols], train_cat, 
                            CategoriaPrecio = train_data$CategoriaPrecio)
 test_encoded  <- bind_cols(test_data[numeric_cols],  test_cat,  
@@ -111,157 +109,127 @@ Antes de elaborar el modelo, se realizó un procesamiento de la data para que se
 
 
 ```{r logistic_regression, echo=FALSE}
-# Fijamos la semilla para que la selección (y validación) sea reproducible
 set.seed(1234)
 
-# Preparamos el dataset para el modelado:
-# Eliminamos variables que no queremos usar como predictoras:
-# - SalePrice: la variable original numérica a partir de la cual se creó la variable objetivo.
-# - CategoriaPrecio: la categorización original.
-# - Estandar y Economica: las otras dos variables dicotómicas que derivamos.
-# Así, nos quedamos con las variables predictoras y el target "Cara".
 model_data <- train_data %>% select(-SalePrice, -CategoriaPrecio, -Estandar, -Economica)
 
-# Eliminamos las filas que contienen valores perdidos
 model_data <- na.omit(model_data)
 
-# Configuramos la validación cruzada con 10 folds:
 train_control <- trainControl(method = "cv", number = 10)
 
-# Entrenamos el modelo de regresión logística usando caret.
-# Se utiliza la familia binomial para indicar que se trata de un modelo logístico.
 logistic_model <- train(as.factor(Cara) ~ ., 
                         data = model_data, 
                         method = "glm", 
                         family = "binomial", 
                         trControl = train_control)
-
-# Mostramos el resumen del modelo
 print(logistic_model)
 
 
 ```
-El primer aspecto a notar es el aviso proporiconado por la librería," glm.fit: algorithm did not converge":
-Esto indica que el algoritmo iterativo usado para ajustar la regresión logística no alcanzó la convergencia completa. En otras palabras, después de varias iteraciones, el método no pudo encontrar un conjunto de parámetros estables. Esto puede suceder cuando: Existen variables altamente correlacionadas (multicolinealidad), hay una separación completa o casi completa de las clases en algunos predictores. El siguiente aviso a tomarle importancia es"prediction from rank-deficient fit; attr(*, "non-estim") has doubtful cases":, este mensaje sugiere que el modelo es rank-deficient; es decir, hay redundancias entre las variables predictoras, de forma que algunos coeficientes no se pueden estimar de manera única. Esto suele suceder cuando existen variables con alta correlación o cuando se incluyen más predictores de los que la información en la muestra puede soportar.  
-Ahora bien, hablando directamente de las estadísticas se obtuvo un `accurracy` de 0.7345955 y un `kappa` de 0.4682196 lo que sugiere que, a pesar de los avisos, el modelo tiene un desempeño moderado para clasificar las viviendas como "cara" (o no). Aunque el rendimiento predictivo es aceptable, los avisos indican que se debe ser cauteloso al interpretar los coeficientes y confiar en la estabilidad del modelo, por lo que se procederá a hacer un estadio más detallado para saber si hay multicolinealidad.
+El primer aspecto a destacar es el aviso proporcionado por la librería: "glm.fit: algorithm did not converge". Esto indica que el algoritmo iterativo utilizado para ajustar la regresión logística no logró alcanzar una convergencia completa. En otras palabras, después de varias iteraciones, el método no pudo encontrar un conjunto de parámetros estables. Esta situación puede ocurrir cuando hay variables altamente correlacionadas (multicolinealidad) o cuando se presenta una separación completa o casi completa de las clases en algunos predictores.
+
+Otro aviso relevante es "prediction from rank-deficient fit; attr(*, 'non-estim') has doubtful cases". Este mensaje sugiere que el modelo es deficiente en rango lo que significa que existen redundancias entre las variables predictoras, impidiendo que algunos coeficientes se estimen de manera única. Esto suele suceder cuando hay variables con alta correlación o cuando se incluyen más predictores de los que la información en la muestra puede soportar.
+
+En cuanto a las estadísticas obtenidas, se alcanzó una `accuracy` de 0.7345955 y un `kappa` de 0.4682196, lo que sugiere que, a pesar de los avisos, el modelo presenta un desempeño moderado al clasificar las viviendas como "caras" o "no caras". Aunque el rendimiento predictivo es aceptable, los avisos indican la necesidad de ser cauteloso al interpretar los coeficientes y confiar en la estabilidad del modelo. Por lo tanto, se procederá a realizar un análisis más detallado para investigar la posible existencia de multicolinealidad.
 
 4. Analice el modelo. Determine si hay multicolinealidad en las variables, y cuáles son las que aportan al
 modelo, por su valor de significación. Haga un análisis de correlación de las variables del modelo y
 especifique si el modelo se adapta bien a los datos.
 
 ```{r modelo_summary, echo=TRUE}
-# Ajustar un modelo de regresión logística usando el dataset 'model_data'
 full_model <- glm(as.factor(Cara) ~ ., data = model_data, family = "binomial")
-
 summary(full_model)
 ```
 
-```{r definir_predictors_non_alias, echo=TRUE, warning=FALSE, message=FALSE}
-# Extraer los nombres de los coeficientes del modelo original
+```{r predictors_non_alias, echo=TRUE, warning=FALSE, message=FALSE}
 coef_names <- names(coef(full_model))
 
-# Identificar los coeficientes que NO están en la matriz de alias
 aliased <- alias(full_model)$Complete
 non_alias <- coef_names[!coef_names %in% rownames(aliased)]
 
-# Excluir el intercepto
 predictors_non_alias <- non_alias[non_alias != "(Intercept)"]
 
 print("Predictors no aliasados:")
 print(predictors_non_alias)
 ```
 
-## este no corre
 ```{r settings_model, echo=TRUE}
-# 1. Asegurarse de que 'predictors_non_alias' solo contenga los predictores que efectivamente están en model_data
 available_predictors <- predictors_non_alias[predictors_non_alias %in% names(model_data)]
 print("Predictores disponibles en model_data:")
 print(available_predictors)
 
-# 2. Envolver cada predictor disponible en backticks para que la fórmula sea sintácticamente válida
 available_predictors_backticks <- paste0("`", available_predictors, "`")
 
-# 3. Construir la fórmula utilizando únicamente los predictores disponibles
 fmla_non_alias <- as.formula(paste("as.factor(Cara) ~", 
                                    paste(available_predictors_backticks, collapse = " + ")))
 print("Fórmula del modelo sin predictores aliasados y con variables disponibles:")
 print(fmla_non_alias)
 
-# 4. Ajustar el modelo usando la fórmula corregida
 full_model_non_alias <- glm(fmla_non_alias, data = model_data, family = "binomial")
 
-# 5. Mostrar el resumen del nuevo modelo
 summary(full_model_non_alias)
-
-
 ```
 
 ```{r vif_stimate, echo=TRUE}
-# 1. Identificar los coeficientes aliasados (colineales) del modelo original
+
 aliased <- alias(full_model)$Complete
 print("Variables colineales (alias):")
 print(aliased)
 
-# 2. Extraer los nombres de los coeficientes del modelo original
 coef_names <- names(coef(full_model))
 
-# Identificar los coeficientes que NO están en la matriz de alias, es decir, que se pueden estimar
 non_alias <- coef_names[!coef_names %in% rownames(aliased)]
 print("Coeficientes no aliasados:")
 print(non_alias)
 
-# 3. Filtrar predictors_non_alias para obtener únicamente aquellos presentes en model_data
 available_predictors <- predictors_non_alias[predictors_non_alias %in% names(model_data)]
 print("Predictors no alias presentes en model_data:")
 print(available_predictors)
 
-# 4. Construir la fórmula usando únicamente los predictores disponibles (envolviéndolos en backticks)
 available_predictors_backticks <- paste0("`", available_predictors, "`")
 fmla_non_alias <- as.formula(paste("as.factor(Cara) ~", 
                                    paste(available_predictors_backticks, collapse = " + ")))
 print("Fórmula del modelo sin predictores aliasados y solo con variables disponibles:")
 print(fmla_non_alias)
 
-# 5. Ajustar el nuevo modelo con la fórmula corregida
 full_model_non_alias <- glm(fmla_non_alias, data = model_data, family = "binomial")
 
-# 6. Calcular el VIF para el nuevo modelo utilizando la librería car
 vif_values <- vif(full_model_non_alias)
 print("Valores VIF para el modelo sin coeficientes aliasados:")
 print(vif_values)
 
 ```
-Al principio se mostró una  matriz con los alias del modelo original. Esto indica que, en el conjunto de predictores inicial, existen relaciones de dependencia lineal exacta entre algunas variables. Al filtrar estos predictores se crean modelos "no aliasados", es decir, solo se incluyen variables que se pueden estimar de forma única.  
-Dentro de la función VIF se calcularon distintos valores de los cualees podemos discutir los siguiente:  
-Variables como `Id` con 1.16 o `MSSubClass` con 1.59, `LotFrontage` 1.66, `LotArea` con 1.41 y algunos otros valores qque tiene un coeificiente entre 1 y 3. Esto indidca poca o ninguna colinealidad significativa en esos casos. Luego tenemos valores que son moderadamente altos como `X1stFlrSF` con 7.39 y `X2ndFlrSF` con 8.15, son valores altos de VIF. Las variables con estos valores, especialmente entre 5 y 10 están correlaciondas con otras. Por último tenemos variables con valores muy altos, por encima de 10, como `YearBuilt` con valores de aproximadamente 10.65 `GarageYrBlt` como `GarageYrBlt` 10.06, `BsmtFinSF1` con VIF de 9.58 y `BsmtUnfSF` y `8.62`. Estos valores indican que existe un problema de multicolinealidad fuerte en estos predictores. Sin embargo, está alta multicolinealidad es razonable en algunos casos, como que el año de construcción y el año de construcción del garaje se relacionen con la edad de la vivienda, y que las medidas de superficie del sótano estén altamente correlacionadas entre sí y posiblemente con la superficie del primer piso.  
-En general aunque muchas de las variables tienen VIF razonablemente bajos, la presencia de algunos predictores con VIF superiores a 10 (o cercanos a esos valores) es una señal de que hay redundancia en la información, lo que podría volver inestables las estimaciones de los coeficientes y dificultar la interpretación individual de estos.
+
+Dentro de la función VIF se calcularon distintos valores de los cuales se pueden discutir los siguientes aspectos: variables como `Id` con un VIF de 1.16, `MSSubClass` con 1.59, `LotFrontage` con 1.66 y `LotArea` con 1.41 presentan coeficientes entre 1 y 3, lo que indica poca o ninguna colinealidad significativa en esos casos. Sin embargo, se observan valores moderadamente altos, como `X1stFlrSF` con 7.39 y `X2ndFlrSF` con 8.15, que sugieren una correlación con otras variables. 
+
+Por otro lado, hay variables que presentan valores muy altos superiores a 10 como `YearBuilt` con aproximadamente 10.65, `GarageYrBlt` con 10.06, `BsmtFinSF1` con 9.58 y `BsmtUnfSF` con 8.62. Estos valores indican un problema de multicolinealidad fuerte en estos predictores. No obstante esta alta multicolinealidad puede ser razonable en ciertos casos, como la relación entre el año de construcción y el año de construcción del garaje, así como la alta correlación entre las medidas de superficie del sótano y la superficie del primer piso.
+
+En general aunque muchas de las variables tienen VIF razonablemente bajos, la presencia de algunos predictores con VIF superiores a 10 (o cercanos a esos valores) es una señal de redundancia en la información. Esto podría hacer que las estimaciones de los coeficientes sean inestables y dificultar la interpretación individual de estos.
 
 
 ```{r correlacion_predictors_fixed, echo=TRUE, warning=FALSE, message=FALSE}
-# Seleccionar únicamente las variables predictoras numéricas eliminando la variable respuesta "Cara"
 predictors_numeric <- model_data %>% 
   select(-Cara) %>% 
   select(where(is.numeric))
 
-# Calcular la matriz de correlación utilizando complete.obs
 corr_matrix <- cor(predictors_numeric, use = "complete.obs")
 print("Matriz de correlación (redondeada):")
 print(round(corr_matrix, 2))
 ```
-Al observar los valores de la matriz de correlación algunas variables de categoría como el tipo de construcción (`MSSubClass`) muestran correlaciones moderadas con otras medidas; por ejemplo, se observa una correlación negativa moderada (alrededor de –0.32) entre `MSSubClass` y `LotFrontage`, lo que podría sugerir que viviendas pertenecientes a ciertas categorías estructurales presentan diferencias en el frente de lote.  
-Otro grupo de variables que destaca son las relacionadas con la calidad y la condición de la vivienda. En particular, “OverallQual” presenta correlaciones positivas notables con “YearBuilt” (0.53) y “YearRemodAdd” (0.57), lo que indica que a medida que las viviendas son más modernas o han sido remodeladas recientemente, tienden a tener calidades percibidas más altas.  
-Las medidas de área constituyen otro bloque importante. Se observa que “TotalBsmtSF” y “X1stFlrSF” tienen una correlación muy alta (cercana a 0.90), lo cual sugiere que estas dos variables miden aspectos relacionados con el tamaño de la vivienda y que, en gran medida, se solapan en la información que aportan. Este tipo de correlación extremadamente alta es indicativa de redundancia, lo que a su vez contribuye a la multicolinealidad del modelo. De igual manera, otros indicadores de área, como “LotFrontage”, “LotArea” y “GrLivArea”, presentan correlaciones moderadas entre sí, lo que puede ser natural dado que todas miden dimensiones físicas del inmueble.  
-Las variables temporales, “YearBuilt” y “YearRemodAdd”, muestran además una correlación alta (0.69), lo que sugiere que en muchas viviendas el año de construcción y el año de remodelación están estrechamente relacionados. Este patrón es común en muestras donde las remodelaciones suceden con mayor probabilidad en casas relativamente nuevas o donde hay una fuerte tendencia a actualizar la propiedad en un cierto rango de años.  
-Entonces la matriz revela que aunque muchas variables presentan correlaciones moderadas o bajas existen agrupaciones de variables (particularmente las relacionadas con el tamaño y la estructura de la vivienda) que están fuertemente correlacionadas. Esto confirma la preocupación por la multicolinealidad que se detectó a través de los altos valores de VIF en ciertos predictores. 
-La matriz de correlación respalda la presencia de redundancias en la información, especialmente entre variables de área y medidas temporales, lo que sugiere que una reducción de dimensiones o una selección cuidadosa de predictores podría mejorar la interpretabilidad del modelo sin comprometer sustancialmente su capacidad predictiva.  
+
+Al analizar la matriz de correlación se observa que algunas variables categóricas como el tipo de construcción (`MSSubClass`) presentan correlaciones moderadas con otras medidas. Por ejemplo, hay una correlación negativa moderada de aproximadamente –0.32 entre `MSSubClass` y `LotFrontage`, sugiriendo diferencias en el frente de lote según la categoría estructural de las viviendas.
+
+Las variables relacionadas con la calidad y condición de la vivienda también destacan. En particular “OverallQual” muestra correlaciones positivas significativas con “YearBuilt” (0.53) y “YearRemodAdd” (0.57), indicando que las viviendas más modernas o recientemente remodeladas tienden a tener calidades percibidas más altas.
+
+En cuanto a las medidas de área, “TotalBsmtSF” y “X1stFlrSF” tienen una correlación muy alta (cercana a 0.90), sugiriendo que ambas miden aspectos del tamaño de la vivienda y presentan redundancia contribuyendo a la multicolinealidad del modelo. Otros indicadores de área, como “LotFrontage”, “LotArea” y “GrLivArea”, también muestran correlaciones moderadas entre sí.
+
+Las variables temporales, “YearBuilt” y “YearRemodAdd”, tienen una correlación alta (0.69), indicando que en muchas viviendas el año de construcción y el de remodelación están estrechamente relacionados.
+
+Aunque muchas variables presentan correlaciones moderadas o bajas existen grupos de variable especialmente relacionadas con el tamaño y la estructura de la vivienda que están fuertemente correlacionadas. Esto refuerza la preocupación por la multicolinealidad, como se evidenció en los altos valores de VIF. La matriz de correlación sugiere que una reducción de dimensiones o una selección cuidadosa de predictores podría mejorar la interpretabilidad del modelo sin comprometer su capacidad predictiva.
 
 ```{r heatmap_correlacion, echo=FALSE, warning=FALSE, message=FALSE}
-
-
-# Convertir la matriz de correlación en formato largo para facilitar la graficación
 melted_corr <- melt(corr_matrix)
 
-# Graficar la matriz de correlación utilizando un heatmap
 ggplot(data = melted_corr, aes(x = Var1, y = Var2, fill = value)) +
   geom_tile() +
   scale_fill_gradient2(low = "blue", mid = "white", high = "red", 
@@ -299,11 +267,7 @@ Finalmente, el resultado del Test de McNemar (p-value = 0.0004909) indica que la
 6. Explique si hay sobreajuste (overfitting) o no (recuerde usar para esto los errores del conjunto de prueba
 y de entrenamiento). Muestre las curvas de aprendizaje usando los errores de los conjuntos de
 entrenamiento y prueba
-```{r}
-# -------------------------------
-# PASO 1: Preparación inicial de datos
-# -------------------------------
-
+```{r prepare_data, echo=FALSE}
 prep_data <- function(data) {
   # Eliminar columnas no relevantes y con muchos NA
   data <- data %>%
@@ -320,30 +284,21 @@ prep_data <- function(data) {
 train_prep <- prep_data(train_data)
 test_prep <- prep_data(test_data)
 
-# -------------------------------
-# PASO 2: Selección de variables numéricas
-# -------------------------------
-
 select_numeric_vars <- function(train_data, test_data, n_vars = 7) {
-  # Seleccionar solo numéricas
   numeric_vars <- train_data %>%
     select(where(is.numeric), -Cara) %>%
     names()
-  
-  # Calcular correlación con la respuesta
+
   cor_values <- sapply(numeric_vars, function(x) {
     cor(train_data[[x]], as.numeric(train_data$Cara), use = "complete.obs")
   })
-  
-  # Seleccionar las más correlacionadas (absoluto)
+
   selected_num <- names(sort(abs(cor_values), decreasing = TRUE)[1:n_vars])
-  
-  # Verificar consistencia en test
+
   cor_test <- sapply(selected_num, function(x) {
     cor(test_data[[x]], as.numeric(test_data$Cara), use = "complete.obs")
   })
-  
-  # Devolver las que mantengan correlación similar
+
   keep_num <- selected_num[sign(cor_values[selected_num]) == sign(cor_test)]
   
   return(keep_num)
@@ -352,36 +307,27 @@ select_numeric_vars <- function(train_data, test_data, n_vars = 7) {
 numeric_selected <- select_numeric_vars(train_prep, test_prep, 7)
 message("Variables numéricas seleccionadas: ", paste(numeric_selected, collapse = ", "))
 
-# -------------------------------
-# PASO 3: Selección de variables categóricas
-# -------------------------------
-
 select_categorical_vars <- function(train_data, test_data, n_vars = 7) {
-  # Seleccionar solo categóricas
   cat_vars <- train_data %>%
     select(where(is.factor), -Cara) %>%
     names()
-  
-  # Test de chi-cuadrado para relación con la respuesta
+
   chi2_results <- sapply(cat_vars, function(x) {
     tbl <- table(train_data[[x]], train_data$Cara)
     if (any(dim(tbl) < 2)) return(0)
     test <- chisq.test(tbl, simulate.p.value = TRUE)
-    -log10(test$p.value) # Transformación para ordenar
+    -log10(test$p.value)
   })
-  
-  # Seleccionar las más significativas
+
   selected_cat <- names(sort(chi2_results, decreasing = TRUE)[1:n_vars])
   
-  # Verificar consistencia en test
   chi2_test <- sapply(selected_cat, function(x) {
     tbl <- table(test_data[[x]], test_data$Cara)
     if (any(dim(tbl) < 2)) return(0)
     test <- chisq.test(tbl, simulate.p.value = TRUE)
     -log10(test$p.value)
   })
-  
-  # Mantener las que tengan significancia en ambos conjuntos
+
   keep_cat <- selected_cat[chi2_test > 2] # p < 0.01
   
   return(keep_cat)
@@ -390,25 +336,20 @@ select_categorical_vars <- function(train_data, test_data, n_vars = 7) {
 categorical_selected <- select_categorical_vars(train_prep, test_prep, 7)
 message("Variables categóricas seleccionadas: ", paste(categorical_selected, collapse = ", "))
 
-# -------------------------------
-# PASO 4: Validación con Random Forest (CLASIFICACIÓN)
-# -------------------------------
 
 validate_with_rf <- function(train_data, num_vars, cat_vars) {
   if (!require("randomForest")) install.packages("randomForest")
   library(randomForest)
   
-  # Crear dataset con variables seleccionadas
   model_data <- train_data %>%
     select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
     mutate(across(all_of(cat_vars), as.factor),
-           Cara = as.factor(Cara))  # Asegurar que Cara sea factor
+           Cara = as.factor(Cara))  
   
-  # Ajustar modelo RF para clasificación
+
   set.seed(123)
   rf_model <- randomForest(Cara ~ ., data = model_data, importance = TRUE)
   
-  # Obtener importancia de variables
   imp_df <- as.data.frame(importance(rf_model)) %>%
     mutate(Variable = rownames(.)) %>%
     arrange(desc(MeanDecreaseAccuracy))
@@ -418,15 +359,11 @@ validate_with_rf <- function(train_data, num_vars, cat_vars) {
 
 rf_result <- validate_with_rf(train_prep, numeric_selected, categorical_selected)
 
-# Mostrar importancia de variables
+
 print(rf_result$importance)
 
-# -------------------------------
-# PASO 5: Función para crear datasets finales (que faltaba)
-# -------------------------------
-
 create_final_datasets <- function(train_data, test_data, num_vars, cat_vars) {
-  # Seleccionar variables y respuesta
+  
   final_train <- train_data %>%
     select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
     mutate(across(all_of(cat_vars), as.factor))
@@ -435,7 +372,6 @@ create_final_datasets <- function(train_data, test_data, num_vars, cat_vars) {
     select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
     mutate(across(all_of(cat_vars), as.factor))
   
-  # Verificar que no haya factores con un solo nivel
   for (var in cat_vars) {
     if (nlevels(final_train[[var]]) < 2) {
       final_train <- final_train %>% select(-all_of(var))
@@ -452,22 +388,16 @@ create_final_datasets <- function(train_data, test_data, num_vars, cat_vars) {
   ))
 }
 
-# -------------------------------
-# PASO 6: Selección final basada en importancia
-# -------------------------------
 
 select_final_vars <- function(importance_df, num_vars, cat_vars, n_final = 14) {
-  # Tomar las n_final más importantes
   final_vars <- importance_df$Variable[1:min(n_final, nrow(importance_df))]
   
-  # Clasificar en numéricas y categóricas
   final_num <- intersect(final_vars, num_vars)
   final_cat <- intersect(final_vars, cat_vars)
   
-  # Completar si no llegamos a n_final
   remaining <- n_final - length(final_num) - length(final_cat)
   if (remaining > 0) {
-    # Tomar las siguientes más importantes del tipo que falta
+
     all_vars <- c(num_vars, cat_vars)
     remaining_vars <- setdiff(all_vars, c(final_num, final_cat))
     to_add <- importance_df$Variable %>%
@@ -483,16 +413,13 @@ select_final_vars <- function(importance_df, num_vars, cat_vars, n_final = 14) {
 
 final_vars <- select_final_vars(rf_result$importance, numeric_selected, categorical_selected)
 
-# -------------------------------
-# RESULTADO FINAL
-# -------------------------------
 
 final_data <- create_final_datasets(
   train_prep, test_prep, 
   final_vars$num, final_vars$cat
 )
 
-# Visualizar importancia de variables
+
 varImpPlot(rf_result$model, main = "Importancia de Variables Seleccionadas")
 
 message("\n=== VARIABLES FINALES SELECCIONADAS ===")
@@ -505,24 +432,19 @@ message(paste(final_data$categorical_vars, collapse = ", "))
 message("\nTop 5 variables más importantes:")
 print(head(rf_result$importance, 5))
 
-# Guardar los nombres de las variables seleccionadas
+
 selected_vars <- list(
   numeric = final_data$numeric_vars,
   categorical = final_data$categorical_vars,
   importance = rf_result$importance
 )
 
-# -------------------------------
-# DIAGNÓSTICO FINAL
-# -------------------------------
 
-# Verificar niveles en variables categóricas
 message("\nVerificación de niveles categóricos:")
 for (var in final_data$categorical_vars) {
   message(var, ": ", nlevels(final_data$train[[var]]), " niveles")
 }
 
-# Verificar balance de clases
 message("\nDistribución de clases:")
 table(final_data$train$Cara)
 ```
@@ -531,13 +453,10 @@ Se realiza la preparación y limpieza de datos eliminando columnas con demasiado
 Tras ello se entrena un modelo de Random Forest (`validate_with_rf`) con las variables filtradas, obteniendo una tabla de importancia de variables (`importance`) que determina cuáles predictores aportan más a la clasificación. En particular, se ve que variables como `GrLivArea`, `X1stFlrSF`, `Neighborhood` y `OverallQual` destacan por su contribución, lo que coincide con la intuición de que tanto la superficie habitable como la calidad y la ubicación de la vivienda son determinantes relevantes para el costo o el tipo de la casa.
 
 Finalmente con la función `create_final_datasets` se construyen los data frames finales para entrenamiento y prueba, asegurando que las columnas categóricas tengan niveles adecuados y que no existan variables categóricas con un solo nivel (que no aportarían información). El reporte de variables finales (7 numéricas y 5 categóricas) y los niveles de cada categoría** confirma que los datos están listos para el modelado, mientras que la **distribución de clases (687 para la clase 0 y 334 para la clase 1) sugiere un ligero desbalance pero no excesivo. 
-```{r}
-library(forcats)
-library(dplyr)
+```{r, echo=FALSE}
 
-# Definir la función para preparar datos finales
 prepare_final_data <- function(data, num_vars, cat_vars) {
-  # Selecciona las columnas de interés y aplica fct_lump_prop a todas las variables categóricas
+
   data <- data %>% 
     select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
     mutate(
@@ -547,34 +466,26 @@ prepare_final_data <- function(data, num_vars, cat_vars) {
   return(data)
 }
 
-# Aplicar la función a ambos conjuntos de datos
 train_final <- prepare_final_data(train_data, final_vars$numeric, final_vars$categorical)
 test_final  <- prepare_final_data(test_data,  final_vars$numeric, final_vars$categorical)
 
-# Forzar que, en el conjunto de prueba, cada variable categórica tenga los mismos niveles que en el conjunto de entrenamiento
 for(var in final_vars$categorical){
   test_final[[var]] <- factor(test_final[[var]], levels = levels(train_final[[var]]))
 }
 
-# Verificar niveles de la variable "Neighborhood"
 message("Niveles en Neighborhood (train): ", paste(levels(train_final$Neighborhood), collapse = ", "))
 message("Niveles en Neighborhood (test): ", paste(levels(test_final$Neighborhood), collapse = ", "))
 
 ```
 
-```{r}
-library(forcats)
-library(dplyr)
-library(caret)
+```{r stadistics, echo=FALSE}
 
-# Supongamos que final_vars ya está definido:
 final_vars <- list(
   numeric = c("GrLivArea", "X1stFlrSF", "OverallQual", "YearBuilt", 
               "GarageArea", "FullBath", "GarageCars"),
   categorical = c("Neighborhood", "BldgType", "HouseStyle", "MSZoning", "LotShape")
 )
 
-# Función para preparar datos finales
 prepare_final_data <- function(data, num_vars, cat_vars) {
   data %>% 
     select(Cara, all_of(num_vars), all_of(cat_vars)) %>%
@@ -584,26 +495,20 @@ prepare_final_data <- function(data, num_vars, cat_vars) {
     )
 }
 
-# Preparar el conjunto de entrenamiento
 train_final <- prepare_final_data(train_data, final_vars$numeric, final_vars$categorical)
 
-# Extraer los niveles del conjunto de entrenamiento para cada variable categórica
 train_levels <- lapply(final_vars$categorical, function(var) levels(train_final[[var]]))
 names(train_levels) <- final_vars$categorical
 
-# Preparar el conjunto de prueba
 test_final <- prepare_final_data(test_data, final_vars$numeric, final_vars$categorical)
 
-# Forzar que cada variable categórica en test_final tenga los mismos niveles que en train_final
 for (var in final_vars$categorical) {
   test_final[[var]] <- factor(test_final[[var]], levels = train_levels[[var]])
 }
 
-# Verificar niveles para Neighborhood
 message("Niveles en Neighborhood (train): ", paste(levels(train_final$Neighborhood), collapse = ", "))
 message("Niveles en Neighborhood (test): ", paste(levels(test_final$Neighborhood), collapse = ", "))
 
-# Ajustar el modelo usando el conjunto de entrenamiento
 final_model <- glm(
   Cara ~ .,
   data = train_final,
@@ -611,12 +516,8 @@ final_model <- glm(
   control = list(maxit = 100)
 )
 
-# Realizar predicciones en train_final y test_final
 train_pred <- predict(final_model, train_final, type = "response") > 0.5
 test_pred  <- predict(final_model, test_final, type = "response") > 0.5
-
-# Convertir las predicciones y las verdaderas a factores con niveles "0" y "1"
-# Aseguramos que tanto las predicciones como las verdaderas tengan los mismos niveles
 
 train_pred_factor <- factor(ifelse(train_pred, "1", "0"), levels = c("0", "1"))
 train_true <- factor(as.character(train_final$Cara), levels = c("0", "1"))
@@ -624,7 +525,6 @@ train_true <- factor(as.character(train_final$Cara), levels = c("0", "1"))
 test_pred_factor <- factor(ifelse(test_pred, "1", "0"), levels = c("0", "1"))
 test_true <- factor(as.character(test_final$Cara), levels = c("0", "1"))
 
-# Generar la matriz de confusión usando las variables factorizadas
 cm_train <- confusionMatrix(table(train_pred_factor, train_true))
 cm_test  <- confusionMatrix(table(test_pred_factor, test_true))
 
@@ -638,57 +538,45 @@ El rendimiento del modelo se evalúa mediante validación cruzada y los índices
 El modelo se entrenó con 520 muestras y 72 predictores, presentando un AIC de 364 y una reducción significativa en la devianza residual (de 720.25 a 297.88) lo cual sugiere que la estructura del modelo ajusta la información contenida en los datos. Aunque se indican coeficientes no definidos debido a singularidades (lo que refuerza la existencia de colinealidad en algunos predictores), la evaluación global a través de la validación cruzada (Accuracy y Kappa) proporciona evidencia de que el modelo posee una capacidad moderada a buena para discriminar entre las dos clases ("0" y "1").
 
 Finalmente las matrices de confusión tanto para entrenamiento como para prueba muestran altos índices de exactitud (93,14% y 91,62% respectivamente), alta sensibilidad (alrededor del 94%) y especificidad también elevada (89% y 87,3% respectivamente) para la clasificación de viviendas. Estos resultados, junto con un Kappa por encima de 0.82, confirman que, a nivel predictivo, el modelo es robusto. 
-```{r maybe grapghics}
-library(ggplot2)
-library(dplyr)
-library(reshape2)
+```{r grapghics, echo=FALSE}
+
 
 set.seed(1234)
 
-# Definir los porcentajes de datos de entrenamiento a usar (del 10% al 100%)
 train_sizes <- seq(0.1, 1.0, by = 0.1)
 
-# Vectores para almacenar errores
 train_errors <- numeric(length(train_sizes))
 val_errors   <- numeric(length(train_sizes))
 
-# Bucle para ajustar el modelo con distintos tamaños de datos
 for(i in seq_along(train_sizes)) {
   pct <- train_sizes[i]
-  # Seleccionar una muestra aleatoria (sin reemplazo) del conjunto de entrenamiento
   n_subset <- floor(pct * nrow(train_final))
   subset_idx <- sample(1:nrow(train_final), size = n_subset)
   train_subset <- train_final[subset_idx, ]
-  
-  # Entrenar el modelo de regresión logística sobre la muestra
+
   model_subset <- glm(Cara ~ ., data = train_subset, family = binomial, control = list(maxit = 100))
-  
-  # Predicciones sobre el mismo subset de entrenamiento
+
   pred_train <- predict(model_subset, train_subset, type = "response")
   pred_train_class <- ifelse(pred_train > 0.5, 1, 0)
   # Calcular error: tasa de clasificación errónea en el entrenamiento
   train_errors[i] <- mean(pred_train_class != as.numeric(as.character(train_subset$Cara)))
-  
-  # Predicciones sobre el conjunto de prueba (validación)
+
   pred_val <- predict(model_subset, test_final, type = "response")
   pred_val_class <- ifelse(pred_val > 0.5, 1, 0)
   # Calcular error en validación
   val_errors[i] <- mean(pred_val_class != as.numeric(as.character(test_final$Cara)))
 }
 
-# Crear dataframe con los resultados para el plot
 learning_curve <- data.frame(
   TrainingSize = train_sizes * 100,  # en porcentaje
   TrainingError = train_errors,
   ValidationError = val_errors
 )
 
-# Convertir a formato largo para ggplot
 learning_curve_melted <- melt(learning_curve, id.vars = "TrainingSize", 
                               variable.name = "Dataset", value.name = "Error")
 
-# Gráfico de las curvas de aprendizaje
-ggplot(learning_curve_melted, aes(x = TrainingSize, y = Error, color = Dataset)) +
+ ggplot(learning_curve_melted, aes(x = TrainingSize, y = Error, color = Dataset)) +
   geom_line(size = 1) +
   geom_point(size = 2) +
   labs(title = "Curvas de Aprendizaje del Modelo de Regresión Logística",
