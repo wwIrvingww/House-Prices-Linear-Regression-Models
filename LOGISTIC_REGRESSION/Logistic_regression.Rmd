@@ -16,7 +16,7 @@ library(forcats)
 library(glmnet)
 library(caret)
 library(profvis)
-
+library(nnet) 
 ```
 
 2.Use los mismos conjuntos de entrenamiento y prueba que utilizó en las hojas anteriores.
@@ -607,12 +607,12 @@ x_train <- model.matrix(Cara ~ ., data = train_final)[, -1]
 y_train <- train_final$Cara
 
 
-test_final <- test_data %>%
+test_final2 <- test_data %>%
   select(Cara, all_of(numeric_vars), all_of(categorical_vars)) %>%
   mutate(across(all_of(categorical_vars), ~ factor(., levels = levels(train_final[[cur_column()]]))))
 
-x_test <- model.matrix(Cara ~ ., data = test_final)[, -1]
-y_test <- test_final$Cara
+x_test <- model.matrix(Cara ~ ., data = test_final2)[, -1]
+y_test <- test_final2$Cara
 
 
 set.seed(123)
@@ -701,3 +701,133 @@ profvis({
   pred_probs <- predict(final_glmnet, newx = x_test, type = "response")
 })
 ```
+
+9. Determine cual de todos los modelos es mejor, puede usar AIC y BIC para esto, además de los parámetros de la matriz de confusión y los del profiler
+
+```{r comparison_part2, echo=FALSE}
+# Función para extraer métricas de una matriz de conf
+get_metrics_from_cm <- function(conf_matrix) {
+  data.frame(
+    Accuracy = conf_matrix$overall["Accuracy"],
+    Sensitivity = conf_matrix$byClass["Sensitivity"],
+    Specificity = conf_matrix$byClass["Specificity"],
+    F1 = conf_matrix$byClass["F1"]
+  )
+}
+
+# Extraer métricas de las matrices que ya tenemos de antes
+metrics_modelo_2 <- get_metrics_from_cm(cm_test)   # Modelo con selección de variables (GLM)
+metrics_modelo_3 <- get_metrics_from_cm(conf_mat)  # Modelo con tuning (GLMNet)
+
+# Crear tabla comparativa
+comparison <- data.frame(
+  Modelo = c("Modelo 2 (GLM)", "Modelo 3 (GLMNet)"),
+  AIC = c(AIC(final_model), NA),  
+  BIC = c(BIC(final_model), NA),  
+  Accuracy = c(metrics_modelo_2$Accuracy, metrics_modelo_3$Accuracy),
+  Sensitivity = c(metrics_modelo_2$Sensitivity, metrics_modelo_3$Sensitivity),
+  Specificity = c(metrics_modelo_2$Specificity, metrics_modelo_3$Specificity),
+  F1 = c(metrics_modelo_2$F1, metrics_modelo_3$F1)
+)
+
+# Añadir AIC/BIC aproximado para glmnet en caso sea necsario
+if (!is.null(final_glmnet)) {
+  log_lik <- sum(dbinom(y_test, 
+                       size = 1, 
+                       prob = predict(final_glmnet, newx = x_test, type = "response"), 
+                       log = TRUE))
+  k <- sum(coef(final_glmnet) != 0)  
+  n <- length(y_test)
+  
+  comparison$AIC[2] <- -2 * log_lik + 2 * k
+  comparison$BIC[2] <- -2 * log_lik + k * log(n)
+}
+
+print(comparison)
+
+```
+
+
+
+10. Haga un modelo de regresión logística para la variable categórica para el precio de las casas (categorías:
+barata, media y cara). Asegúrese de tunearlo para obtener el mejor modelo posible.
+
+```{r clasification_logisti_regresion, echo=FALSE}
+head(train_data)
+clasificaciones <- table(train_data$CategoriaPrecio)
+print(clasificaciones)
+
+train_data$CategoriaPrecio <- factor(train_data$CategoriaPrecio, 
+                                    levels = c("barata", "estandar", "cara"))
+test_data$CategoriaPrecio <- factor(test_data$CategoriaPrecio, 
+                                   levels = levels(train_data$CategoriaPrecio))
+
+# Seleccionar variables (usaremos las mismas del ejercicio anterior)
+numeric_vars <- c("GrLivArea", "X1stFlrSF", "OverallQual", "YearBuilt", 
+                  "GarageArea", "FullBath", "GarageCars")
+categorical_vars <- c("Neighborhood", "BldgType", "HouseStyle", "MSZoning", "LotShape")
+
+# Crear fórmula
+formula <- as.formula(paste("CategoriaPrecio ~", 
+                           paste(c(numeric_vars, categorical_vars), collapse = " + ")))
+
+# Preparar matrices para glmnet
+x_train <- model.matrix(formula, data = train_data)[, -1]  # Eliminar intercept
+y_train <- train_data$CategoriaPrecio
+
+test_complete <- test_data[complete.cases(test_data[, all.vars(formula)]), ]
+y_test_complete <- test_complete$CategoriaPrecio
+
+x_test <- model.matrix(formula, data = test_complete)[, -1]
+
+
+# Tuneo de alpha (mezcla) y lambda (penalización) con validación cruzada
+set.seed(123)
+cv_multinom <- cv.glmnet(x_train, y_train, 
+                        family = "multinomial",  # Para >2 clases
+                        alpha = 0.5,             # Elastic Net (0.5 = balance)
+                        type.measure = "class",  # Métrica: error de clasificación
+                        nfolds = 10)
+
+# Mejores parámetros
+best_lambda <- cv_multinom$lambda.min
+cat("Mejor lambda:", best_lambda, "\n")
+
+# Modelo final con mejores parámetros
+final_multinom <- glmnet(x_train, y_train, 
+                        family = "multinomial",
+                        alpha = 0.5,
+                        lambda = best_lambda)
+
+# Coeficientes (por categoría)
+# print(coef(final_multinom))
+
+# Predicciones en test
+pred_class_multi <- predict(final_multinom, newx = x_test, type = "class")
+
+cat("Longitud de pred_class_multi:", length(pred_class_multi), "\n")
+cat("Longitud de y_test:", length(y_test_complete), "\n")
+
+# Asegurar que los niveles de referencia y predicción coincidan
+common_levels <- intersect(levels(y_test_complete), unique(pred_class_multi))
+
+# Filtrar solo las clases presentes
+y_test_filtered <- factor(y_test_complete, levels = common_levels)
+pred_class_filtered <- factor(pred_class_multi, levels = common_levels)
+
+# Verificar niveles
+cat("Niveles en y_test:", levels(y_test_filtered), "\n")
+cat("Niveles en predicciones:", levels(pred_class_filtered), "\n")
+
+# Matriz de confusión corregida
+conf_mat_tuned <- confusionMatrix(pred_class_filtered, y_test_filtered)
+print(conf_mat_tuned)
+# Métricas por clase
+cat("Accuracy:", conf_mat_tuned$overall["Accuracy"], "\n")
+print(conf_mat_tuned$byClass[, c("Sensitivity", "Specificity", "F1")])
+
+```
+
+11. Compare la eficiencia del modelo anterior con los de clasificación de las entregas anteriores ¿Cuál se demoró más en procesar?¿Cuál se equivocó más?¿Cuál se equivocó menos?¿por qué?
+
+Esto se respinderá mejor en el documento final, ya que colocar los resultados de los módelos junto con el código sería más tardado, largo y redundante. Pero el análisis completo se encontrará en el documento final de entrega.
