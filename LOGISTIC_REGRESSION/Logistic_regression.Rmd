@@ -13,6 +13,9 @@ library(car)
 library(reshape2)
 library(ggplot2)
 library(forcats)
+library(glmnet)
+library(caret)
+library(profvis)
 
 ```
 
@@ -587,3 +590,114 @@ learning_curve_melted <- melt(learning_curve, id.vars = "TrainingSize",
 ```
 La gráfica ilustra la evolución de la tasa de error (eje vertical) para el conjunto de entrenamiento (línea roja) y el de validación (línea azul), conforme se incrementa el porcentaje de datos de entrenamiento utilizados (eje horizontal). En los primeros tramos (menores al 30% de datos) el modelo tiende a sobreajustar(training error muy bajo) mientras que el error en validación es más alto debido a que con pocos datos el modelo se adapta excesivamente a la muestra pequeña y no generaliza tan bien. Sin embargo, a medida que aumenta el tamaño de la muestra de entrenamiento ambos errores convergen y se estabilizan, lo cual es una señal de que el modelo no sufre de sobreajuste severo cuando se dispone de suficientes datos. La brecha relativamente estrecha entre los errores de entrenamiento y validación en los últimos tramos (acercándose al 100% de datos) sugiere que el modelo encuentra un buen balance entre complejidad y capacidad de generalización. Este comportamiento respalda la confiabilidad del modelo y confirma que agregar más información de entrenamiento contribuye a una mayor robustez en el desempeño.
 
+7.  Haga un tuneo del modelo para determinar los mejores parámetros, recuerde que los modelos de regresión logística se pueden regularizar como los de regresión lineal.
+
+
+```{r tunin_model, echo=FALSE}
+numeric_vars <- c("GrLivArea", "X1stFlrSF", "OverallQual", "YearBuilt", 
+                  "GarageArea", "FullBath", "GarageCars")
+categorical_vars <- c("Neighborhood", "BldgType", "HouseStyle", "MSZoning", "LotShape")
+
+# Preparar datos
+train_final <- train_data %>%
+  select(Cara, all_of(numeric_vars), all_of(categorical_vars)) %>%
+  mutate(across(all_of(categorical_vars), as.factor))
+
+x_train <- model.matrix(Cara ~ ., data = train_final)[, -1]  
+y_train <- train_final$Cara
+
+
+test_final <- test_data %>%
+  select(Cara, all_of(numeric_vars), all_of(categorical_vars)) %>%
+  mutate(across(all_of(categorical_vars), ~ factor(., levels = levels(train_final[[cur_column()]]))))
+
+x_test <- model.matrix(Cara ~ ., data = test_final)[, -1]
+y_test <- test_final$Cara
+
+
+set.seed(123)
+alphas <- seq(0, 1, by = 0.1)  
+
+# Función para encontrar mejor lambda y alpha
+tune_glmnet <- function(alpha) {
+  cv_model <- cv.glmnet(x_train, y_train, 
+                        family = "binomial", 
+                        alpha = alpha,
+                        type.measure = "class",  # Para accuracy
+                        nfolds = 10)
+  data.frame(alpha = alpha,
+             lambda_min = cv_model$lambda.min,
+             lambda_1se = cv_model$lambda.1se,
+             accuracy = 1 - min(cv_model$cvm))
+}
+
+
+tune_results <- map_df(alphas, tune_glmnet)
+
+
+best_alpha <- tune_results$alpha[which.max(tune_results$accuracy)]
+best_lambda <- tune_results$lambda_min[which.max(tune_results$accuracy)]
+
+# Modelo final con mejor alpha y lambda
+final_glmnet <- glmnet(x_train, y_train, 
+                       family = "binomial",
+                       alpha = best_alpha,
+                       lambda = best_lambda)
+
+# Coeficientes del modelo
+coef(final_glmnet)
+
+# Predicciones
+pred_probs <- predict(final_glmnet, newx = x_test, type = "response")
+pred_class <- ifelse(pred_probs > 0.5, 1, 0)
+
+print(paste("Mejor alpha (mezcla Ridge/Lasso):", best_alpha))
+print(paste("Mejor lambda (fuerza de regularización):", best_lambda))
+
+
+```
+8. Haga un análisis de la eficiencia del algoritmo usando una matriz de confusión. Tenga en cuenta la efectividad, donde el algoritmo se equivocó más, donde se equivocó menos y la importancia que tienen los errores, el tiempo y la memoria consumida. Para esto último puede usar “profvis” si trabaja con R
+
+```{r metric_tunin, echo=FALSE}
+
+# Matriz conf
+conf_mat <- confusionMatrix(factor(pred_class, levels = c(0, 1)), 
+                           factor(y_test, levels = c(0, 1)))
+print(conf_mat)
+
+# metricas especificas
+accuracy <- conf_mat$overall["Accuracy"]
+sensitivity <- conf_mat$byClass["Sensitivity"]  # Recall para clase 0 (no cara)
+specificity <- conf_mat$byClass["Specificity"]  # Recall para clase 1 (cara)
+precision <- conf_mat$byClass["Pos Pred Value"]  # Precisión para clase 1
+f1_score <- 2 * (precision * sensitivity) / (precision + sensitivity)
+
+cat("\n=== MÉTRICAS CLAVE ===",
+    "\nAccuracy (Exactitud):", round(accuracy, 4),
+    "\nSensibilidad (Clase 0 - 'No Cara'):", round(sensitivity, 4),
+    "\nEspecificidad (Clase 1 - 'Cara'):", round(specificity, 4),
+    "\nPrecisión (Clase 1):", round(precision, 4),
+    "\nF1-Score (Balanceado):", round(f1_score, 4))
+
+
+conf_df <- as.data.frame(conf_mat$table)
+colnames(conf_df) <- c("Predicción", "Real", "Frecuencia")
+
+# Heatmap de errores
+ggplot(conf_df, aes(x = Real, y = Predicción, fill = Frecuencia)) +
+  geom_tile() +
+  geom_text(aes(label = Frecuencia), color = "white") +
+  scale_fill_gradient(low = "blue", high = "red") +
+  labs(title = "Matriz de Confusión: Predicción vs Real",
+       subtitle = paste("Accuracy:", round(accuracy, 2))) +
+  theme_minimal()
+
+# Perfilado del entrenamiento del modelo final
+profvis({
+  final_glmnet <- glmnet(x_train, y_train, 
+                         family = "binomial",
+                         alpha = best_alpha,
+                         lambda = best_lambda)
+  pred_probs <- predict(final_glmnet, newx = x_test, type = "response")
+})
+```
