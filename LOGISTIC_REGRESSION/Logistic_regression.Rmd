@@ -17,6 +17,8 @@ library(glmnet)
 library(caret)
 library(profvis)
 library(nnet) 
+library(utils)
+library(purrr)
 ```
 
 2.Use los mismos conjuntos de entrenamiento y prueba que utilizó en las hojas anteriores.
@@ -645,7 +647,7 @@ final_glmnet <- glmnet(x_train, y_train,
                        lambda = best_lambda)
 
 # Coeficientes del modelo
-coef(final_glmnet)
+# coef(final_glmnet)
 
 # Predicciones
 pred_probs <- predict(final_glmnet, newx = x_test, type = "response")
@@ -692,7 +694,9 @@ ggplot(conf_df, aes(x = Real, y = Predicción, fill = Frecuencia)) +
        subtitle = paste("Accuracy:", round(accuracy, 2))) +
   theme_minimal()
 
-# Perfilado del entrenamiento del modelo final
+```
+
+```{r performance_test, include=FALSE}
 profvis({
   final_glmnet <- glmnet(x_train, y_train, 
                          family = "binomial",
