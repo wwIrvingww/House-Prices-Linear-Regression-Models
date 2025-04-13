@@ -594,6 +594,7 @@ La gráfica ilustra la evolución de la tasa de error (eje vertical) para el con
 
 7.  Haga un tuneo del modelo para determinar los mejores parámetros, recuerde que los modelos de regresión logística se pueden regularizar como los de regresión lineal.
 
+Ahora que hemos conseguido un mejor modelo gracias a la elección de variables importantes el modelo ha mejorado bastante, pero puede que se puede mejorar un poco más todavía. El modelo previo no incluía el uso de tuning para hiperparámetros, por lo que existe aún rango para una mejora. En este caso estamos usando glmnet para poder relizar el entrenamient ya que en este caso estamos usando glmnet para realizar el entrenamiento ya que nos ayuda a encontrar el mejor balance entre complejidad y rendimiento del modelo, algo que con la regresión logística normal nos costaría más trabajo ajustar manualmente, esto por medio del tuning de las variables alpha lambda. Las condiciones siguen siendo las mismas, mismo set de entrenamiento y prueba junto con el mismo set de variables elegidas.
 
 ```{r tunin_model, echo=FALSE}
 numeric_vars <- c("GrLivArea", "X1stFlrSF", "OverallQual", "YearBuilt", 
@@ -658,6 +659,9 @@ print(paste("Mejor lambda (fuerza de regularización):", best_lambda))
 
 
 ```
+
+Ya que en esta situacion no se tiene un único hiperparametro, es importante tener en cuenta la mejor combinación de ambos valores y no únicamente el mejor endividual. Esto se tuvo en cuenta en el entrenamiento y al final se obtuve un valor de alpha de *0.9* y un lambda de *0.007053960638741* lo cual quiere decir que al estar alpha cercano a 1, el modelo priorizó eliminar variables poco importantes, enfocandose en variables más importantes como bien puede ser OverallQual, GrLivArea, entre otros. Ahora en el caso del valor lambda este sugiere que las variables conservadas mantuvieron su poder predictivo y no son limitadas al momento de realizar las predicciones. Por lo que podemos decir que el modelo es bastante selectivo y toma en cuenta las variables más importantes principalmente, manteniendo dichas variables significativas al no restringir la influencia predictiva de estas variables. Con una configuración solida para el entrenamiento con respecto a los hiperparametros, se pudo hacer nuevamente un modelo predictivo para determinar si una casa es cara o no. 
+
 8. Haga un análisis de la eficiencia del algoritmo usando una matriz de confusión. Tenga en cuenta la efectividad, donde el algoritmo se equivocó más, donde se equivocó menos y la importancia que tienen los errores, el tiempo y la memoria consumida. Para esto último puede usar “profvis” si trabaja con R
 
 ```{r metric_tunin, echo=FALSE}
@@ -695,18 +699,84 @@ ggplot(conf_df, aes(x = Real, y = Predicción, fill = Frecuencia)) +
   theme_minimal()
 
 ```
+Los resultados del modelo tuneado muestran un excelente desempeño en la clasificación de casas para determinar si una vivienda es cara o no. Obteniendo un accuracy del 92.26%, el modelo demuestra una alta capacidad predictiva, acertando en la gran mayoría de los casos. La sensibilidad para la clase 0 ('No Cara') es muy buena, llegando a alcanzar un 95.86% de acierto, lo que indica que el modelo identifica correctamente casi todas las viviendas que no son consideradas caras. Esto es un muy buen logro ya que quiere decir que el modelo es capaz de diferenciar las casas que son menos caras, de las que son más costosas.
+
+Por otro lado, la especificidad del 85.23% para la clase 1 ('Cara') muestra  que el modelo es también bueno al momento de identificar viviendas de alto valor, aunque no es tan bueno como en el caso de las casas no caras, cometiendo algunos errores de clasificación en esta categoría. Además hace sentido que el modelo sea mejor prediciendo las no caras. Recordemos que la regresión logística se basa en probabilidades y habiendo 3 clases distintas, para el modelo obviamente será más sencillo predecir cuando una casa no pertenece a una categoría, aunque esto poría variar dependiendo del umbral de probabilidad que coloquemos para clasificar.Por fines de simplicidad el valor de probabilidad para la clasificación en todos los modelos se dejó en 0.5 (50%) y no fue tomado en cuenta como un hipérparametro para el entrenamiento.
+
+Ahora bien aunque haya disminuido la exactitud para predecir si una casa es cara, la precisión del 92.67% para esta clase muestra que cuando el modelo predice que una vivienda es cara, suele estar en lo correcto. El F1-Score balanceado de 94.24% es también un buen indicador y confirma que el modelo mantiene un buen equilibrio entre precisión y recall en ambas clases.
+
+Estos resultados superan al modelo sin tuning, obteniendo un accuracy ligeramente más alto. La combinación óptima de hiperparámetros (alpha = 0.9 y lambda = 0.007) permitió lograr este balance, donde el modelo es lo suficientemente selectivo para eliminar variables poco relevantes, pero no tan restrictivo como para perder capacidad predictiva. El buen desempeño en las distintas métricas sugiere que el modelo generaliza bien y no está sobreajustado.
+
 
 ```{r performance_test, include=FALSE}
 profvis({
+  numeric_vars <- c("GrLivArea", "X1stFlrSF", "OverallQual", "YearBuilt", 
+                  "GarageArea", "FullBath", "GarageCars")
+  categorical_vars <- c("Neighborhood", "BldgType", "HouseStyle", "MSZoning", "LotShape")
+  
+  # Preparar datos
+  train_final <- train_data %>%
+    select(Cara, all_of(numeric_vars), all_of(categorical_vars)) %>%
+    mutate(across(all_of(categorical_vars), as.factor))
+  
+  x_train <- model.matrix(Cara ~ ., data = train_final)[, -1]  
+  y_train <- train_final$Cara
+  
+  
+  test_final2 <- test_data %>%
+    select(Cara, all_of(numeric_vars), all_of(categorical_vars)) %>%
+    mutate(across(all_of(categorical_vars), ~ factor(., levels = levels(train_final[[cur_column()]]))))
+  
+  x_test <- model.matrix(Cara ~ ., data = test_final2)[, -1]
+  y_test <- test_final2$Cara
+  
+  
+  set.seed(123)
+  alphas <- seq(0, 1, by = 0.1)  
+  
+  # Función para encontrar mejor lambda y alpha
+  tune_glmnet <- function(alpha) {
+    cv_model <- cv.glmnet(x_train, y_train, 
+                          family = "binomial", 
+                          alpha = alpha,
+                          type.measure = "class",  # Para accuracy
+                          nfolds = 10)
+    data.frame(alpha = alpha,
+               lambda_min = cv_model$lambda.min,
+               lambda_1se = cv_model$lambda.1se,
+               accuracy = 1 - min(cv_model$cvm))
+  }
+  
+  
+  tune_results <- map_df(alphas, tune_glmnet)
+  
+  
+  best_alpha <- tune_results$alpha[which.max(tune_results$accuracy)]
+  best_lambda <- tune_results$lambda_min[which.max(tune_results$accuracy)]
+  
+  # Modelo final con mejor alpha y lambda
   final_glmnet <- glmnet(x_train, y_train, 
                          family = "binomial",
                          alpha = best_alpha,
                          lambda = best_lambda)
+  
+  # Coeficientes del modelo
+  # coef(final_glmnet)
+  
+  # Predicciones
   pred_probs <- predict(final_glmnet, newx = x_test, type = "response")
+  pred_class <- ifelse(pred_probs > 0.5, 1, 0)
+
 })
 ```
 
+Además de analizar la matríz de confusión y las distintas métricas de desempeño, también probamos a utilizar la herramienta de profviz para poder conocer que tan bueno es el algoritmo utilizado a nivel de uso de recursos, tiempo y eficiencia. En esta prueba inicialmente no tomamos en cuenta la parte del tuning dentro del análisis de ejecución, ya que el tuning no forma parte de la función de entrenamiento de glmnet() como tal. 
+
+Pero el problema con esto fue que los resultados de este análisis al final no eran tan significativos como se esperaba. En la mayoría de los casos la ejecución del algoritmo era rápida, generalmente menos de un segundo 40 ms para ser exactos y 0.6MB de memoria. Suponemos es por el hecho de no incluir el tiempo del tuning el algoritmo manejaba una gran eficiencia media vez se tengan ya los hiperparámetros o no se haga tunning alguno. Ahora bien, una vez integrado el algoritmo y código completo (incluyendo el tunning) la diferencia fue mucho más notoria. Logramos ver que en total todo el algoritmo duraba 5.8 segundos aproximadamente. El proceso de ajuste de hiperparámetros consumió 299 MB y demoró casi un segundo, mientras que la parte de entrenamiento con glmnet() consumió 4MB y tardó 10ms. El entrenamiento es rápido, pero el tunning si crece un poco en tiempo, pero la verdad es que no es una cantidad de tiempo extensa. Con los resultado obtenidos hasta el momento es posible entonces profundizar un poco más y comparar los modelos.
+
 9. Determine cual de todos los modelos es mejor, puede usar AIC y BIC para esto, además de los parámetros de la matriz de confusión y los del profiler
+
+En este caso tuvimos distintos resultados/modelos para la predicción si una casa es cara o no, como vimos en todos el análisis previos. Realizamos un modelo sin mayores ajustes, uno con validación cruzada, selección de variables y otro con tunning, pero en este análisis preferimos enfocarnos en los úlitmos 2 modelos realizados. La razón es que realmente estos 2 son los mejores y los primeros 2 modelos son significativamente peores, obteniendo un accuracy de 0.7345955 para el primer modelo y un accuracy de 0.8633 en el caso del segundo, mientras que el modelo 3 y 4 tuvieron métricas por encima de 90 para clasificar si una casa era cara o no. Es por eso que nos enfocamos en estas, comparando en una tabla el Akaike Information Criterion (AIC) y Bayesian Information Criterion (BIC). 
 
 ```{r comparison_part2, echo=FALSE}
 # Función para extraer métricas de una matriz de conf
@@ -725,7 +795,7 @@ metrics_modelo_3 <- get_metrics_from_cm(conf_mat)  # Modelo con tuning (GLMNet)
 
 # Crear tabla comparativa
 comparison <- data.frame(
-  Modelo = c("Modelo 2 (GLM)", "Modelo 3 (GLMNet)"),
+  Modelo = c("Modelo 3 (GLM)", "Modelo 4 (GLMNet)"),
   AIC = c(AIC(final_model), NA),  
   BIC = c(BIC(final_model), NA),  
   Accuracy = c(metrics_modelo_2$Accuracy, metrics_modelo_3$Accuracy),
@@ -751,10 +821,16 @@ print(comparison)
 
 ```
 
+Ahora teniendo esta información es posible diferenciar mejor cual de los ejercicios ha sido el mejor. El Modelo 4, en el que se usó GLMNet, muestra ciertas ventajas. Con un AIC de 220.59 y BIC de 326.78 notablemente más bajos que los del Modelo 3 con 472.18 y 595.40 respectivamente. Esto indica un mejor equilibrio entre complejidad y ajuste a los datos. Esta mejora se refleja también en el accuracy, ya que al final se tuvo un 92.26% vs 91.62%, donde el modelo con tunning supera ligeramente al estándar. Sin embargo, lo más destacable es el F1-Score donde el modelo 4 gana al comparar los valores de 94.24% vs 93.24%, que confirma una mayor capacidad para mantener el balance entre precisión y recall en sus predicciones.
 
+Las métricas específicas por clase muestran un comportamiento interesante, ya que el Modelo 4 logra una sensibilidad bastante alta con 95.86%, para identificar correctamente viviendas no caras (clase 0), aunque con una pequeña disminución en especificidad. El modelo 3 gana al comparar los valores de 85.23% vs 87.31% para detectar viviendas caras (clase 1). Este trade-off parece valioso, ya que el GLMNet compensa esta diferencia con una mayor precisión general y un mejor desempeño global. Entonces al final el modelo 4 resulta ser menos hábil en la clasificación de viviendas que si son caras a cambio de tener un mayor accuracy y generalizar mejor en sus predicciones, lo cual es intercambio bastante válido.
 
-10. Haga un modelo de regresión logística para la variable categórica para el precio de las casas (categorías:
-barata, media y cara). Asegúrese de tunearlo para obtener el mejor modelo posible.
+Ahora bien, estos modelos que hemos hecho hasta el momento han tenido métricas muy altas en comparación a otros modelos y algoritmos probados en el pasado. Con estos modelos se ha hecho cross validation, tunning y se ha verificado que no hay overfitting, lo cuál es bueno. Pero hay que tener una considreación qu eestamos haciendo únicamente una clasificación binaria donde decimos que una casa pertenece o no a un tipo de precio (cara en este caso), mientras que en los demás algoritmos se calsificaban las casas en 3 categorías distintas. Es por eso que ahora lo que corresponde es probar utilizar regresión logística para clasificar las casas en barata, media y cara.
+
+10. Haga un modelo de regresión logística para la variable categórica para el precio de las casas (categorías: barata, media y cara). Asegúrese de tunearlo para obtener el mejor modelo posible.
+
+Por la naturaleza del algoritmo, se sabe que la regresión logística no es un clasificador directo. La regresión logística provee una probabilidad de entre 0 y 1 de que un registro pertenezca o no a una clase. Hemos solucionado esto hasta el momento colocando un umbral, donde si la probabilidad es mayoyr al 50% pertenece a una clase y en General esto seguirá siendo así, con la diferencia de que en la configuración del entrenamiento, se debe cambiar el "family" a multinomial. Las condiciones son las mismas, mismo set de prueba y entrenamiento, mismas variables y con tunning para poder obtener el mejor modelo posible.
+
 
 ```{r clasification_logisti_regresion, echo=FALSE}
 head(train_data)
@@ -831,6 +907,12 @@ cat("Accuracy:", conf_mat_tuned$overall["Accuracy"], "\n")
 print(conf_mat_tuned$byClass[, c("Sensitivity", "Specificity", "F1")])
 
 ```
+
+El modelo de clasificación multiclase logró un desempeño sólido, con un accuracy general del 83.49%, superando significativamente a un modelo que predice de manera aleatoria. Los resultados muestran que el modelo tiene particular habilidad para identificar correctamente las casas de las categorías "barata" con sensibilidad de 88.65% y las casas clasificadas como "cara" con sensibilidad de 89.26%. Pero por otra parte parece que hay una mayor dificultad con la clase intermedia "estándar" ya que la sensibilidad es considerablemente más baja llegando a un 72.60%. Esto se refleja en la matriz de confusión, donde se observan más errores entre las categorías "estándar" y las relacionadas con este. 
+
+Este comportamiento hasta cierto punto es esperado, tomando en cuenta la cantidad de datos que tenemos y que este problema se dió justamente en casi todos los modelos independientemente del algoritmo. Suponemos puede haber varias casas que estén muy cerca de ser caras o baratas y dichos datos son clasificados erreneamente. Ya sea por este motivo o bien por datos atípicos, como una casa a un precio más bajo o alto de lo normal por ejemplo, la clase estándar sigue siendo la más complicada de clasificar.
+
+Ahora con respecto al valor kappa de 0.7523 este indica que el modelo supera por bastante las expectativas de un clasificador aleatorio. Las métricas por clase muestran un buen equilibrio entre sensibilidad y especificidad en todas las categorías, siendo especialmente destacable el desempeño para la clase "cara" que combina una alta sensibilidad (89.26%) con una excelente especificidad (94.77%). El lambda óptimo encontrado (0.0038) sugiere que el modelo se benefició de una regularización moderada, permitiendo un buen balance entre complejidad y capacidad predictiva. El valor de alpha no formó parte del tuning en este caso y por ende se notó más rápido al momento de ejecutar aunque la diferencia no fue tan significativa.
 
 11. Compare la eficiencia del modelo anterior con los de clasificación de las entregas anteriores ¿Cuál se demoró más en procesar?¿Cuál se equivocó más?¿Cuál se equivocó menos?¿por qué?
 
