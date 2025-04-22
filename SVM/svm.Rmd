@@ -1,0 +1,146 @@
+---
+title: "SVM"
+author: "Irving, Chuy"
+date: "2025-04-22"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(visdat)
+library(ggplot2)
+library(dplyr)
+```
+
+1. Use los mismos conjuntos de entrenamiento y prueba de las hojas de trabajo pasadas para probar el algoritmo. 
+```{r load_data, echo=FALSE}
+#train data ya tiene el 70 y test_data el 30%
+train_data <- read.csv("../train_final.csv")
+test_data <- read.csv("../test_final.csv")
+```
+Se removieron las columnas problematicas. Se remueven las columnas que no dan información útil.
+
+
+```{r remove_na_columns, echo=FALSE}
+pct_na <- sapply(train_data, function(x) mean(is.na(x))*100)
+drop_cols <- names(pct_na[pct_na > 75])
+train_data <- train_data %>% select(-all_of(drop_cols))
+test_data  <- test_data  %>% select(-all_of(drop_cols))
+```
+
+3. Use como variable respuesta la variable categórica que especifica si la casa es barata, media o cara.
+```{r discretization, echo=FALSE}
+breaks <- quantile(train_data$SalePrice, probs = c(0,1/3,2/3,1), na.rm=TRUE)
+labels <- c("barata","estandar","cara")
+
+train_data$CategoriaPrecio <- cut(train_data$SalePrice, breaks=breaks, labels=labels, include.lowest=TRUE)
+test_data$CategoriaPrecio  <- cut(test_data$SalePrice,  breaks=breaks, labels=labels, include.lowest=TRUE)
+
+```
+Creamos las tres categorías de las casas (barata, estándar, cara.)
+
+2. Explore los datos y explique las transformaciones que debe hacerle para generar un modelo de máquinas vectoriales de soporte.
+
+```{r structure}
+str(train_data)        # Tipos (numérico, factor, character)
+summary(train_data)    # Estadísticos básicos
+
+```
+
+```{r NAN_values}
+colSums(is.na(train_data))  
+visdat::vis_miss(train_data)
+
+```
+
+```{r balance, echo=TRUE}
+# 1. Frecuencias absolutas y relativas
+freqs <- table(train_data$CategoriaPrecio)
+print(freqs)
+print(prop.table(freqs))
+
+# 2. Gráfico de barras de la proporción de cada categoría
+library(ggplot2)
+ggplot(train_data, aes(x = CategoriaPrecio)) +
+  geom_bar(aes(y = ..prop.., group = 1), fill = "steelblue") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Balance de categorías de precio en train_data",
+    x     = "Categoría de Precio",
+    y     = "Porcentaje"
+  ) +
+  theme_minimal()
+
+```
+
+```{r distribution}
+numeric_vars <- names(train_data)[sapply(train_data, is.numeric)]
+library(reshape2)
+melt(train_data[, numeric_vars]) %>%
+ ggplot(aes(x = value)) + 
+ facet_wrap(~variable, scales = "free") +
+ geom_histogram(bins = 30)
+```
+
+#ejecutar despues
+
+```{r boxplots_significativas, echo=TRUE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+# 1) Lista de variables con p‑value < 0.05 en tu modelo
+vars_sig <- c(
+  "LotFrontage",
+  "OverallQual",
+  "OverallCond",
+  "YearBuilt",
+  "X1stFlrSF",
+  "X2ndFlrSF"
+)
+
+# 2) Preparamos un data.frame largo
+df_long <- train_data %>%
+  select(CategoriaPrecio, all_of(vars_sig)) %>%
+  pivot_longer(
+    cols      = -CategoriaPrecio,
+    names_to  = "variable",
+    values_to = "valor"
+  )
+
+# 3) Un único ggplot con facet_wrap
+ggplot(df_long, aes(x = CategoriaPrecio, y = valor)) +
+  geom_boxplot(fill = "steelblue") +
+  facet_wrap(~ variable, scales = "free_y", ncol = 2) +
+  labs(
+    title = "Boxplots de variables significativas por Categoría de Precio",
+    x     = "Categoría de Precio",
+    y     = "Valor"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r correlation}
+corr_mat <- cor(train_data[, numeric_vars], use = "pairwise.complete.obs")
+corrplot::corrplot(corr_mat, tl.cex = .6)
+caret::findCorrelation(corr_mat, cutoff = 0.9)  
+```
+
+# ejecutar despues. Quitar los placeholders
+```{r}
+GGally::ggpairs(train_data[, c("var1","var2","var3","target")])
+```
+
+```{r nearZero_variance}
+nzv <- caret::nearZeroVar(train_data, saveMetrics = TRUE)
+nzv[nzv$nzv, ]
+
+```
+
+```{r}
+pca <- prcomp(scale(train_data[, numeric_vars]), center = TRUE)
+autoplot(pca, data = train_data, colour = "target")
+
+```
