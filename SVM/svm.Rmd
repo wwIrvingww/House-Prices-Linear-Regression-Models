@@ -10,6 +10,11 @@ knitr::opts_chunk$set(echo = TRUE)
 library(visdat)
 library(ggplot2)
 library(dplyr)
+library(tidyr)
+library(reshape2)
+library(GGally)
+library(ggfortify)
+library(caret)
 ```
 
 1. Use los mismos conjuntos de entrenamiento y prueba de las hojas de trabajo pasadas para probar el algoritmo. 
@@ -40,34 +45,32 @@ Creamos las tres categorías de las casas (barata, estándar, cara.)
 
 2. Explore los datos y explique las transformaciones que debe hacerle para generar un modelo de máquinas vectoriales de soporte.
 
-```{r structure}
+```{r structure, echo=FALSE}
 str(train_data)        # Tipos (numérico, factor, character)
 summary(train_data)    # Estadísticos básicos
 ```
-La tabla contiene 1 021 registros y 82 variables: numéricas, de texto y la respuesta categórica CategoriaPrecio con tres niveles (“barata”, “estandar”, “cara”). Hay varios huecos en columnas como 190 valores perdidos en LotFrontage, 58 en GarageYrBlt y algunos en MasVnrArea, lo que sugiere la necesidad de imputar o eliminar esos casos antes de entrenar la SVM. Además aparecen muchas variables de texto que habrá que transformar (por ejemplo, con one-hot encoding) y variables numéricas con rangos muy dispares, por lo que un escalado será indispensable.
+La tabla contiene 1 021 registros y 82 variables: numéricas, de texto y la respuesta categórica CategoriaPrecio con tres niveles (“barata”, “estandar”, “cara”). Hay varios huecos en columnas como 190 valores perdidos en LotFrontage, 58 en GarageYrBlt y algunos en MasVnrArea, lo que sugiere la necesidad de imputar o eliminar esos casos antes de entrenar la SVM. Además aparecen muchas variables de texto que habrá que transformar y variables numéricas con rangos muy dispares, por lo que un escalado será indispensable.
 
-```{r NAN_values}
+```{r NAN_values, echo=FALSE}
 colSums(is.na(train_data))  
 visdat::vis_miss(train_data)
 
 ```
-Las variables con mayor proporción de valores faltantes son PoolQC (1 017 de 1 021, es decir ~99 %), MiscFeature (979 faltantes, ~96 %) y Fence (829 faltantes, ~81 %), que corresponden a amenidades poco comunes (piscina, característica miscelánea, cerca) y cuya ausencia indica simplemente que la casa carece de dicho elemento. A continuación aparecen Alley con 963 NAs (~94 %), FireplaceQu con 486 (~48 %) y las tres columnas de garaje (GarageType, GarageYrBlt, GarageFinish, GarageQual, GarageCond) con 58 faltantes (~6 %). También hay huecos en el sótano (BsmtQual, BsmtCond, BsmtExposure, BsmtFinType1, BsmtFinType2 con 25–26 faltantes) y en la mampostería (MasVnrType, MasVnrArea con 7 faltantes). El resto de las variables numéricas tiene muy pocos o ningún NA, salvo LotFrontage con 190 faltantes (~19 %), mientras que Electrical aparece con 1 valor perdido.
+Las variables con mayor proporción de valores faltantes son PoolQC (1 017 de 1 021, es decir ~99 %), MiscFeature (979 faltantes, ~96 %) y Fence (829 faltantes, ~81 %). También aparecen Alley con 963 NAs (~94 %), FireplaceQu con 486 (~48 %) y las tres columnas de garaje (GarageType, GarageYrBlt, GarageFinish, GarageQual, GarageCond) con 58 faltantes (~6 %). También hay huecos en el sótano (BsmtQual, BsmtCond, BsmtExposure, BsmtFinType1, BsmtFinType2 con 25–26 faltantes) y en la mampostería (MasVnrType, MasVnrArea con 7 faltantes). El resto de las variables numéricas tiene muy pocos o ningún NA, salvo LotFrontage con 190 faltantes (~19 %), mientras que Electrical aparece con 1 valor perdido.
 
 Este patrón sugiere que muchos NAs reflejan la ausencia de una característica (p. ej. no hay piscina ni callejón) y deberían tratarse como una categoría “None” o “Sin dato” más que imputarse con la media. 
 
-```{r balance, echo=TRUE}
-# 1. Frecuencias absolutas y relativas
+```{r balance, echo=FALSE}
 freqs <- table(train_data$CategoriaPrecio)
 print(freqs)
 print(prop.table(freqs))
 
-# 2. Gráfico de barras de la proporción de cada categoría
-library(ggplot2)
+
 ggplot(train_data, aes(x = CategoriaPrecio)) +
   geom_bar(aes(y = ..prop.., group = 1), fill = "steelblue") +
   scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
   labs(
-    title = "Balance de categorías de precio en train_data",
+    title = "Balance",
     x     = "Categoría de Precio",
     y     = "Porcentaje"
   ) +
@@ -76,24 +79,19 @@ ggplot(train_data, aes(x = CategoriaPrecio)) +
 ```
 La proporción de cada categoría es de 33.4 % para “barata”, 33.9 % para “estandar” y 32.7 % para “cara”. El gráfico de barras con eje en porcentaje confirma visualmente esta uniformidad, pues las tres barras tienen alturas muy similares, lo que sugiere un balance de clases prácticamente equiparado.
 
-```{r distribution}
+```{r distribution, echo=FALSE}
 numeric_vars <- names(train_data)[sapply(train_data, is.numeric)]
-library(reshape2)
+
 melt(train_data[, numeric_vars]) %>%
  ggplot(aes(x = value)) + 
  facet_wrap(~variable, scales = "free") +
  geom_histogram(bins = 30)
 ```
-La mayoría de las variables numéricas muestran distribuciones fuertemente sesgadas a la derecha con colas largas: por ejemplo, `LotArea`, `GrLivArea` y `SalePrice` concentran gran parte de los casos en valores bajos–medios pero con algunos outliers muy elevados. Variables como `LotFrontage`, `BsmtFinSF1` o `TotalBsmtSF` también presentan este comportamiento, evidenciando que unas pocas viviendas tienen frentes de lote o sótanos excepcionalmente grandes.  
+La mayoría de las variables numéricas muestran distribuciones  sesgadas a la derecha con colas largas, por ejemplo: `LotArea`, `GrLivArea` y `SalePrice` concentran gran parte de los casos en valores bajos–medios pero con algunos outliers muy elevados. Variables como `LotFrontage`, `BsmtFinSF1` o `TotalBsmtSF` también presentan este comportamiento, evidenciando que unas pocas viviendas tienen frentes de lote o sótanos excepcionalmente grandes.  
 
-Por otra parte, varias columnas aparecen casi siempre en cero (porches, piscina, `LowQualFinSF`, `BsmtFinSF2`, `X3SsnPorch`, `MiscVal`), lo cual indica que la mayoría de las casas carecen de esas características. Otras, como `OverallQual`, `OverallCond`, `FullBath` o `GarageCars`, son **discretas y acotadas**, con barras muy concentradas en unos pocos valores enteros.
+Por otra parte, varias columnas aparecen casi siempre en cero (porches, piscina, `LowQualFinSF`, `BsmtFinSF2`, `X3SsnPorch`, `MiscVal`), lo cual indica que la mayoría de las casas carecen de esas características.
 
-```{r boxplots_significativas, echo=TRUE}
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-
-# 1) Lista de variables con p‑value < 0.05 en tu modelo
+```{r boxplots, echo=FALSE}
 vars_sig <- c(
   "LotFrontage",
   "OverallQual",
@@ -103,7 +101,6 @@ vars_sig <- c(
   "X2ndFlrSF"
 )
 
-# 2) Preparamos un data.frame largo
 df_long <- train_data %>%
   select(CategoriaPrecio, all_of(vars_sig)) %>%
   pivot_longer(
@@ -112,7 +109,6 @@ df_long <- train_data %>%
     values_to = "valor"
   )
 
-# 3) Un único ggplot con facet_wrap
 ggplot(df_long, aes(x = CategoriaPrecio, y = valor)) +
   geom_boxplot(fill = "steelblue") +
   facet_wrap(~ variable, scales = "free_y", ncol = 2) +
@@ -125,12 +121,11 @@ ggplot(df_long, aes(x = CategoriaPrecio, y = valor)) +
 
 
 ```
-En los boxplots de “LotFrontage”, “OverallQual” y “OverallCond” se observa una clara tendencia ascendente en la mediana al pasar de casas “baratas” a “estandar” y “cara”. Para LotFrontage, la mediana sube de aproximadamente 60 pies en “barata” a cerca de 70 pies en “cara”, con un rango intercuartílico que también se expande ligeramente y numerosos outliers hacia valores altos. En OverallQual, la calidad general crece de una mediana de 5 en “barata” a 7 en “cara”, reflejando que las viviendas más caras suelen tener calidades superiores. OverallCond muestra menos variabilidad, pero igualmente un ligero aumento de la mediana (cerca de 5 en “barata” y “estandar”, y ligeramente mayor en “cara”), aunque con outliers de bajas condiciones en las casas más económicas.
+En los boxplots de *LotFrontage*, *OverallQual* y *OverallCond* se observa que la mediana tiende a aumentar conforme se pasa de viviendas categorizadas como *baratas* a *estándar* y luego a *caras*. En el caso específico de *LotFrontage*, la mediana sube aproximadamente de 60 pies en la categoría *barata* hasta cerca de 70 pies en la categoría *cara*, con un rango  que también se incrementa ligeramente y numerosos valores atípicos hacia la zona alta. Por otro lado, en *OverallQual* se aprecia cómo la calidad general aumenta desde una mediana de 5 en viviendas *baratas* hasta alcanzar un valor de 7 en las viviendas *caras*, reflejando que las casas más costosas suelen poseer una calidad superior. En contraste, *OverallCond* presenta menor variabilidad, aunque también se observa un ligero incremento de la mediana.  
 
-En los boxplots de “X1stFlrSF”, “X2ndFlrSF” y “YearBuilt” también se aprecian patrones consistentes. Para la superficie de planta baja (X1stFlrSF), la mediana crece de unos 900 ft² en “barata” a aproximadamente 1 400 ft^2 en “cara”, y el rango intercuartílico se ensancha, indicando casas más grandes en las categorías superiores. X2ndFlrSF es prácticamente nulo en “barata”, moderate en “estandar” (medianas cercanas a 500 ft^2) y mayor en “cara” (medianas de 600–700 ft^2), con outliers discrecionales hacia valores altos. Finalmente, *YearBuilt* revela que las casas “baratas” tienden a construirse antes de 1950 (mediana en torno a 1940), las “estandar” alrededor de 1970–1980, y las “cara” después de 1990, confirmando que las viviendas más nuevas están asociadas a precios más altos.
+Para **X1stFlrSF** la mediana aumenta desde aproximadamente 900 pies cuadrados en viviendas *baratas* hasta cerca de 1 400 pies cuadrados en las viviendas *caras*, acompañada por un rango  más amplio lo que indica que las viviendas de categorías superiores tienden a ser más grandes. En cuanto a **X2ndFlrSF** es casi inexistente en viviendas *baratas*, moderada en viviendas *estándar* (medianas alrededor de 500 pies cuadrados), y notablemente mayor en las viviendas *caras* (medianas entre 600 y 700 pies cuadrados), con algunos valores atípicos dispersos hacia valores aún más altos. Por último, *YearBuilt* revela que las viviendas clasificadas como *baratas* tienden a haber sido construidas antes de 1950, mientras que las *estándar* suelen ubicarse alrededor de las décadas de 1970 y 1980, y las *caras* después de 1990.
 
-
-```{r correlation}
+```{r correlation, echo=FALSE}
 corr_mat <- cor(train_data[, numeric_vars], use = "pairwise.complete.obs")
 corrplot::corrplot(corr_mat, tl.cex = .6)
 caret::findCorrelation(corr_mat, cutoff = 0.9)  
@@ -139,11 +134,8 @@ En el mapa de correlaciones se aprecia un bloque de alta correlación positiva e
 
 Fijándonos en la última fila/columna de `SalePrice`, las relaciones más destacadas son con `OverallQual` (≈0.8), `GrLivArea` (≈0.7), `X1stFlrSF` y `TotalBsmtSF` (≈0.6), y moderadas con `GarageCars`/`GarageArea` (0.6–0.65). También aparece una correlación razonable con `YearBuilt` (≈0.5), indicando que casas más nuevas suelen venderse más caras. Las variables climáticas o de fecha de venta (`MoSold`, `YrSold`) tienen correlaciones prácticamente cero con el precio, confirmando que el momento de la venta no sesga fuertemente el valor.
 
-```{r ggpairs_significativas, echo=TRUE, message=FALSE, warning=FALSE}
-library(GGally)
-library(ggplot2)
+```{r ggpairs_significativas, echo=FALSE}
 
-# Seleccionamos las variables numéricas más significativas + la categórica
 vars_sig <- c(
   "LotFrontage",
   "OverallQual",
@@ -154,22 +146,21 @@ vars_sig <- c(
   "CategoriaPrecio"
 )
 
-# Creamos el pair plot
 ggpairs(
   train_data,
   columns = vars_sig,
   mapping = aes(color = CategoriaPrecio, alpha = 0.5),
-  upper = list(continuous = wrap("cor", size = 3)),   # Correlaciones arriba
+  upper = list(continuous = wrap("cor", size = 3)),
   lower = list(continuous = wrap("points", size = 0.5)), 
-  diag  = list(continuous = "densityDiag")           # Densidad en la diagonal
+  diag  = list(continuous = "densityDiag")
 ) +
   theme_minimal() +
   labs(title = "Relaciones entre variables significativas y Categoría de Precio")
 
 ```
-En los **paneles diagonales** de densidad se aprecia cómo las distribuciones de cada variable se desplazan progresivamente: para `LotFrontage` el pico de densidad rojo (barata) está alrededor de 55–60, el verde (estandar) cerca de 65–70 y el azul (cara) hacia 75–80; en `OverallQual` se ve un desplazamiento semejante de medianas de 5 a 7. Los **diagramas de dispersión** (parte inferior) muestran cómo las tres categorías se solapan pero avanzan en diagonal: casas “caras” (azul) tienden a combinar mayor calidad (`OverallQual`) con lotes y áreas más grandes (`LotFrontage`, `X1stFlrSF`, `X2ndFlrSF`), mientras que las “baratas” (rojo) quedan en la porción baja de cada nube.
+En los *paneles diagonales* de densidad se aprecia cómo las distribuciones de cada variable se desplazan progresivamente: para `LotFrontage` el pico de densidad rojo (barata) está alrededor de 55–60, el verde (estandar) cerca de 65–70 y el azul (cara) hacia 75–80; en `OverallQual` se ve un desplazamiento semejante de medianas de 5 a 7. Los *diagramas de dispersión* (parte inferior) muestran cómo las tres categorías se solapan pero avanzan en diagonal: casas “caras” (azul) tienden a combinar mayor calidad (`OverallQual`) con lotes y áreas más grandes (`LotFrontage`, `X1stFlrSF`, `X2ndFlrSF`), mientras que las “baratas” (rojo) quedan en la porción baja de cada nube.
 
-En los **paneles superiores** se anotan los coeficientes de correlación global y por categoría. Por ejemplo, `X1stFlrSF` vs. `SalePrice` tiene una **correlación global** de 0.478, pero dentro de “estandar” es aún mayor (≈0.535) y más moderada en “cara” (≈0.233). `OverallQual` vs. `SalePrice` arroja 0.303 global, con “barata” en 0.274, “estandar” en 0.291 y “cara” en 0.019, reflejando que la fuerza de asociación varía según el segmento de precio. Varias relaciones (p. ej. `YearBuilt` vs. `SalePrice`) son débiles globalmente (≈0.146) y casi nulas en ciertos grupos, lo que señala heterogeneidad en la dinámica de cada categoría.
+En los *paneles superiores* se anotan los coeficientes de correlación global y por categoría. Por ejemplo, `X1stFlrSF` vs. `SalePrice` tiene una *correlación global* de 0.478, pero dentro de “estandar” es aún mayor (≈0.535) y más moderada en “cara” (≈0.233). `OverallQual` vs. `SalePrice` arroja 0.303 global, con “barata” en 0.274, “estandar” en 0.291 y “cara” en 0.019, reflejando que la fuerza de asociación varía según el segmento de precio. Varias relaciones (p. ej. `YearBuilt` vs. `SalePrice`) son débiles globalmente (≈0.146) y casi nulas en ciertos grupos, lo que señala heterogeneidad en la dinámica de cada categoría.
 
 ```{r nearZero_variance}
 nzv <- caret::nearZeroVar(train_data, saveMetrics = TRUE)
@@ -180,19 +171,15 @@ Cada variable marcada con `nzv = TRUE` (por ejemplo `Street`, `PoolArea`, `Enclo
 
 Por ello, es recomendable **eliminar** todas las variables con `nzv = TRUE` antes de entrenar la SVM. Con esto reduces la dimensionalidad sin perder información relevante, aceleras el ajuste y evitas posibles problemas de sobreajuste o condicionamiento numérico.
 
-```{r}
-library(dplyr)
-library(ggfortify)
+```{r PCA, echo=TRUE}
 
-# 1. Limpiar filas que tengan NA o Inf en las variables numéricas
+
 df_pca <- train_data %>%
   select(all_of(numeric_vars), CategoriaPrecio) %>%
   filter(if_all(all_of(numeric_vars), ~ is.finite(.)))
 
-# 2. Ajustar PCA con centrado y escalado estándar
 pca_res <- prcomp(df_pca[, numeric_vars], center = TRUE, scale. = TRUE)
 
-# 3. Graficar PCA coloreado por categoría de precio
 autoplot(pca_res, data = df_pca, colour = "CategoriaPrecio") +
   theme_minimal() +
   labs(
@@ -206,46 +193,37 @@ autoplot(pca_res, data = df_pca, colour = "CategoriaPrecio") +
 En el diagrama de PCA, las tres categorías muestran un **gradient en el eje horizontal (PC1)**: las casas “cara” (azul) tienden a concentrarse hacia valores negativos de PC1, las “estandar” (verde) orbitan alrededor de cero, y las “barata” (rojo) se desplazan hacia valores positivos. Esto indica que la primera componente principal capta gran parte de la variabilidad asociada al precio, aunque existe un **solapamiento notable** entre categorías, por lo que no se genera una separación perfectamente lineal.
 
 4. Genere varios (más de 2) modelos de SVM con diferentes kernels y distintos valores en los parámetros c, gamma (circular) y d (en caso de que utilice el polinomial). Puede tunear el modelo de forma automática siempre que explique los resultados.
-```{r svm_full_pipeline_v2, echo=TRUE, message=FALSE, warning=FALSE}
-library(dplyr)
-library(caret)
+```{r svm, echo=FALSE}
+
 
 set.seed(42)
 
-# 0) Asegurarnos de que la respuesta es factor
 train_data$CategoriaPrecio <- factor(
   train_data$CategoriaPrecio,
   levels = c("barata","estandar","cara")
 )
 
-# 1) Dummy‐encode de los predictores (excluyendo la respuesta)
 dv <- dummyVars(~ ., data = train_data %>% select(-CategoriaPrecio), fullRank = TRUE)
 X  <- predict(dv, newdata = train_data) %>% as.data.frame()
 
-# 2) Imputación temprana de numéricas (median) para poder calcular correlaciones
 pp_imp <- preProcess(X, method = "medianImpute")
 X_imp  <- predict(pp_imp, X)
 
-# 3) Eliminar near-zero-variance en los predictores imputados
 nzv <- nearZeroVar(X_imp)
 if(length(nzv) > 0) X_imp <- X_imp[ , -nzv]
 
-# 4) Eliminar predictores altamente correlacionados (> 0.90)
 corr_mat  <- cor(X_imp)
 high_corr <- findCorrelation(corr_mat, cutoff = 0.90)
 if(length(high_corr) > 0) X_imp <- X_imp[ , -high_corr]
 
-# 5) Transformación final: YeoJohnson para sesgos, luego centrar y escalar
 pp_final <- preProcess(X_imp, method = c("YeoJohnson", "center", "scale"))
 X_ready <- predict(pp_final, X_imp)
 
-# 6) Construir el dataset final
 train_final <- bind_cols(
   X_ready,
   CategoriaPrecio = train_data$CategoriaPrecio
 )
 
-# 7) Definir control de CV y grilla de tuning (ejemplo para kernel lineal)
 ctrl       <- trainControl(
   method          = "cv",
   number          = 5,
@@ -254,7 +232,6 @@ ctrl       <- trainControl(
 )
 grid_linear <- expand.grid(C = c(0.1, 1, 10))
 
-# 8) Entrenar SVM lineal
 svm_lin <- train(
   CategoriaPrecio ~ .,
   data      = train_final,
@@ -263,29 +240,25 @@ svm_lin <- train(
   tuneGrid  = grid_linear
 )
 
-# 9) Imprimir resultados
 print(svm_lin)
 
 
 ```
-El SVM lineal entrenado sobre las 1 021 observaciones y 97 predictores, evaluado mediante validación cruzada a 5 pliegues, mostró un claro óptimo con C=1C=1: alcanzó una exactitud promedio de 0.888 (frente a 0.866 con C=0.1C=0.1 y 0.878 con C=10C=10), un AUC de 0.974 (vs. 0.965 y 0.971) y un Kappa de 0.833. Además mejoró la prAUC a 0.928 y la sensibilidad media a 0.889, mientras que la especificidad llegó al 0.944. Un C intermedio logra el mejor equilibrio entre sesgo y varianza, superando tanto a valores muy pequeños (modelo excesivamente rígido) como a valores muy grandes (modelo susceptible a sobreajuste).
+El SVM lineal entrenado sobre las 1 021 observaciones y 96 predictores, evaluado mediante validación cruzada a 5 folds, mostró un claro óptimo con C=10: alcanzó un acurracy promedio de 0.888  un AUC de 0.97 y un Kappa de 0.82. Además mejoró la sensibilidad media a 0.889 Un C intermedio logra el mejor equilibrio entre sesgo y varianza, superando tanto a valores muy pequeños (modelo excesivamente rígido) como a valores muy grandes (modelo susceptible a sobreajuste).
 
 
 5. Use los modelos para predecir el valor de la variable respuesta. 
 6. Haga las matrices de confusión respectivas. 
 
-```{r svm_predict_full, echo=TRUE, message=FALSE, warning=FALSE}
-library(dplyr)
-library(caret)
+```{r svm_predict, echo=FALSE}
+
 set.seed(42)
 
-# 1) Asegurar respuesta como factor y marcar origen
 test_data$CategoriaPrecio <- factor(test_data$CategoriaPrecio, levels = c("barata","estandar","cara"))
 train_data$CategoriaPrecio <- factor(train_data$CategoriaPrecio, levels = c("barata","estandar","cara"))
 train_data$dataset <- "train"
 test_data$dataset  <- "test"
 
-# 2) Rellenar NAs y mapear niveles nuevos a 'None' en categóricas
 cat_cols <- names(train_data)[sapply(train_data, function(x) is.character(x) || is.factor(x)) &
                                !names(train_data) %in% c('CategoriaPrecio','dataset')]
 for(col in cat_cols) {
@@ -299,34 +272,28 @@ for(col in cat_cols) {
   train_data[[col]] <- factor(train_data[[col]], levels = levels(test_data[[col]]))
 }
 
-# 3) Unir train y test para dummy-encodear de una vez
 df_all <- bind_rows(train_data, test_data)
 
-# 4) Dummy encoding (excluyendo Id, dataset y respuesta)
 dv_all <- dummyVars(~ . - Id - dataset - CategoriaPrecio,
                      data = df_all, fullRank = TRUE)
 X_all  <- predict(dv_all, newdata = df_all) %>% as.data.frame()
 
-# 5) Separar matrices de train y test (sin preprocesar)
 i_train <- which(df_all$dataset == 'train')
 X_train <- X_all[i_train, ]
 X_test  <- X_all[-i_train, ]
 y_train <- train_data$CategoriaPrecio
 y_test  <- test_data$CategoriaPrecio
 
-# 6) Imputación de medianas en train para eliminar NA antes de correlación
 pp_imp      <- preProcess(X_train, method = 'medianImpute')
 X_train_imp <- predict(pp_imp, X_train)
 X_all_imp   <- predict(pp_imp, X_all)
 
-# 7) Eliminar near-zero-variance
 nzv_cols <- nearZeroVar(X_train_imp)
 if(length(nzv_cols) > 0) {
   X_train_imp <- X_train_imp[, -nzv_cols, drop = FALSE]
   X_all_imp   <- X_all_imp[, -nzv_cols, drop = FALSE]
 }
 
-# 8) Eliminar predictores altamente correlacionados (>0.90)
 corrm     <- cor(X_train_imp)
 hc        <- findCorrelation(corrm, cutoff = 0.90)
 if(length(hc) > 0) {
@@ -334,26 +301,22 @@ if(length(hc) > 0) {
   X_all_imp   <- X_all_imp[, -hc, drop = FALSE]
 }
 
-# 9) Preprocesado final: YeoJohnson, centrado y escalado
 pp_final   <- preProcess(X_train_imp, method = c('YeoJohnson','center','scale'))
 X_all_pp   <- predict(pp_final, X_all_imp)
 
-# 10) Reconstruir datasets preprocesados
 X_train_pp <- X_all_pp[i_train, ]
 X_test_pp  <- X_all_pp[-i_train, ]
 
-# 11) Entrenar SVM lineal con validación cruzada y tuning
 ctrl     <- trainControl(method = 'cv', number = 5, classProbs = TRUE, summaryFunction = multiClassSummary)
 grid_lin <- expand.grid(C = c(0.1, 1, 10))
 svm_lin   <- train(x = X_train_pp, y = y_train,
                    method = 'svmLinear', trControl = ctrl, tuneGrid = grid_lin)
 
-# 12) Predecir y evaluar en test
 pred    <- predict(svm_lin, X_test_pp)
 results <- data.frame(Id = df_all$Id[-i_train], Actual = y_test, Predicted = pred)
 print(head(results))
 print(confusionMatrix(pred, y_test))
 ```
-La matriz de confusión revela un desempeño casi impecable: de 140 casas “baratas”, 139 fueron correctamente clasificadas y solo 1 se confundió como “estandar”; de 148 viviendas “estandar”, 143 se acertaron, 2 se asignaron a “barata” y 3 a “cara”; y de 148 casas “cara”, 146 fueron bien identificadas y solo 2 pasaron a “estandar”. Las sensibilidades por clase oscilan entre 97.99 % (“cara”) y 98.58 % (“barata”), mientras que la especificidad supera el 98 % en todos los casos, destacando un excelente balance entre verdaderos positivos y negativos. La elevada precisión predictiva (PPV) de 99.29 % para “barata”, 96.62 % para “estandar” y 98.65 % para “cara” confirma que casi todas las predicciones son correctas, y las tasas de prevalencia reflejan que el modelo mantiene fuerte discriminación incluso con distribución de clases equilibrada.
+La matriz de confusión revela un desempeño casi impecable: de 139 casas “baratas”, 139 fueron correctamente clasificadas y solo 1 se confundió como “estandar”; de 143 viviendas “estandar”, 143 se acertaron,32 se asignaron a “cara” y 2 a “barata”; y de 148 casas “cara”, 146 fueron bien identificadas y solo 2 pasaron a “estandar”. Las sensibilidades por clase oscilan entre 97.99 % (“cara”) y 98.58 % (“barata”), mientras que la especificidad supera el 98 % en todos los casos, destacando un excelente balance entre verdaderos positivos y negativos. La elevada precisión predictiva (PPV) de 99.29 % para “barata”, 96.62 % para “estandar” y 98.65 % para “cara” confirma que casi todas las predicciones son correctas, y las tasas de prevalencia reflejan que el modelo mantiene fuerte discriminación incluso con distribución de clases equilibrada.
 
-En conjunto, estos resultados —Accuracy de 98.17 %, Kappa de 0.9725 y Balanced Accuracy promedio superior al 98 %— muestran que el pipeline de limpieza (imputación, dummy-encoding, filtrado de NZV y alta correlación) y transformación (Yeo–Johnson, centrado y escalado) potenció significativamente la capacidad del SVM lineal para separar las tres categorías de precio. El uso de C=1 en validación cruzada equilibró el trade-off bias/varianza, evitando tanto el subajuste como el sobreajuste, y condujo a un clasificador muy robusto y generalizable a datos de prueba.
+A pesar de que parecen ser resultados alentadores. Una precisión tan alta (0.9817) puede ser signo de sobreajuste, por lo que es importante a tomar en cuenta para evitar confusiones.
