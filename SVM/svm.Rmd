@@ -324,7 +324,7 @@ A pesar de que parecen ser resultados alentadores. Una precisión tan alta (0.98
 7. Analice si los modelos están sobreajustados o desajustados. ¿Qué puede hacer para
 manejar el sobreajuste o desajuste?
 
-COmo se mencionó anteriromente, es necesario tener en cuenta el sobreajuste, especialmente si al final se obtiene un valor de accuracy tan alto para las predicciones realizadas con el conjunto de entrenamiento. Ahora bien, sabemos que el problema no es el desbalance de datos ni los datos utilizados en si, ya que hemos usado los mismos datos para todas las prácticas y además las clases se encuentran balanceadas. Por lo que tenemos 2 formas principales para verificar la presencia de overfitting, comparación de accuracy con training y testing y la curva de aprendizaje.
+Como se mencionó anteriromente, es necesario tener en cuenta el sobreajuste, especialmente si al final se obtiene un valor de accuracy tan alto para las predicciones realizadas con el conjunto de entrenamiento. Ahora bien, sabemos que el problema no es el desbalance de datos ni los datos utilizados en si, ya que hemos usado los mismos datos para todas las prácticas y además las clases se encuentran balanceadas. Por lo que tenemos 2 formas principales para verificar la presencia de overfitting, comparación de accuracy con training y testing y la curva de aprendizaje.
 
 ### Analisis de overfitting con accuracy
 
@@ -622,7 +622,7 @@ print(svr_model)
 plot(svr_model)
 ```
 
-```{r analisis_sobreajuste, echo=FALSE}
+```{r svr_eval, echo=FALSE}
 # Hacer predicciones
 train_pred <- predict(svr_model, train_ready)
 test_pred <- predict(svr_model, test_ready)
