@@ -48,6 +48,8 @@ breaks <- quantile(train_data$SalePrice, probs = c(0,1/3,2/3,1), na.rm=TRUE)
 labels <- c("barata","estandar","cara")
 
 train_data$CategoriaPrecio <- cut(train_data$SalePrice, breaks=breaks, labels=labels, include.lowest=TRUE)
+
+
 test_data$CategoriaPrecio  <- cut(test_data$SalePrice,  breaks=breaks, labels=labels, include.lowest=TRUE)
 
 ```
