@@ -504,17 +504,47 @@ El resultado final los consideramos bueno, al haber obtenido en entrenamiento: 8
 
 8. Compare los resultados obtenidos con los diferentes modelos que hizo en cuanto a efectividad, tiempo de procesamiento y equivocaciones (donde el algoritmo se equivocó más, donde se equivocó menos y la importancia que tienen los errores).
 
+Hasta el momento realmente tenemos 2 modelos principales. Anteriormente se realizó tuning sobre el parámetro C y de los 3 modelos obtenidos se probó el que era el mejor de estos. De dicho entrenamiento, el valor de c "óptimo" resultó ser 10 y con esto obtuvimos un modelo que tuvo métricas exageradamente altas.Teniendo accuracy mayor al 90 tanto para training como para testing, pero con la dificultad que el modelo tenía sobreajuste. 
+
+Luego de esto se realizó otro modelo con el objetivo de minimizar dicho sobre ajuste, sacrificando tal véz un poco de accuracy, pero con el fin de poder tener un model más robusto que generalize mejor los datos para eliminar o bien reducir al mínimos el sobreajuste. 
+
+Es importante mencionar que este segundo modelo donde se hizo tuning no solo de C, sino también del suavizado del kernel con sigma, fue considerablemente más lento. Llegando a tardar más que el entrenamiento realizado previamente. Esto es de esperar ya que la configuración nueva es más compleja, para poder realizar el entrenamiento y reducir la mayor posible el overfitting. Pero al final se logró obtener un modelo con un kernel distinto, donde se redujo el sobreajuste al mínimo. Obviamente se tuvo que hacer un sacrificio, ya que al final el modelo generaliza mejor a cambio de una reducción en la precisión ( ahora es de 84% para el set de prueba), pero aún así, un modelo tan sobreajustado realmente puede resultar ser problemático. 
+
+Los modelos sobreajustados tienden a ser frágiles ante los cambios dentro de los datos y puede ser propenso a fallar con datos nuevos que no conoce, aunque el accuracy del sobreajustado sea mayor, realmente el mejor modelo que tenemos es el segundo. El modelo con el nuevo kernel resulta ser mejor por generalizar mejor los datos y ser más apropiado para situaciones reales.Además en comparación con los modelos de clasificación realizados anteriormente el porcentajede precisión es bueno y curiosamente, en este caso ya vemos nuevamente el patrón de la difucultad de clasificación en la clase estandar..
 
 
 9. Compare la eficiencia del mejor modelo de SVM con los resultados obtenidos en los
 algoritmos de las hojas de trabajo anteriores que usen la misma variable respuesta (árbol de decisión y random forest, naive bayes, KNN, regresión logística). ¿Cuál es mejor para predecir? ¿Cuál se demoró más en procesar?
 
+El top de algoritmos de clasificación previamente era este:
+
+1. KNN con tuning para clasificación 86.47% 
+2. Clasificación con Regresión logística con tuning 83.49% 
+3. Random Forest para clasificación con 83%  
+4. Árbol de clasificación con 75.63%   
+5. Naive Bayes, con tuning con 75.56% 
+
+Ahora tomando en consideración el modelo de clasificación nuevo realizado con tuning y reducción de sobre ajuste el resultado nuevo sería el sigiente:
+
+1. KNN con tuning para clasificación 86.47% 
+2. SVM con kernel RBF con tuning 84.40%
+3. Clasificación con Regresión logística con tuning 83.49% 
+4. Random Forest para clasificación con 83%  
+5. Árbol de clasificación con 75.63%   
+6. Naive Bayes, con tuning con 75.56% 
+
+El KNN sigue siendo el mejor con un 86.47% de accuracy, demostrando ser excelente para capturar patrones locales en los datos, aunque su dependencia de la distancia lo hace sensible a la escala de variables y ruido, cuando se realizó este algoritmo requirió de un procesamiento bastante elaborado también. Le sigue de cerca el SVM con kernel RBF (84.4%), que, aunque un 2% menos preciso, ofrece una buena ventaja, la generalización robusta al ser entrenado con tuning y esepcíficamente para reducir el overfiting. Este equilibrio lo hace más confiable para datos nuevos frente al KNN, cuyo desempeño en producción podría degradarse si la distribución de los datos cambia. Los otros modelos (Regresión Logística: 83.49%, Random Forest: 83%) mantienen un rendimiento sólido pero están por debajo en precisión, con la desventaja añadida de mayor costo computacional en el caso de Random Forest.
+
+En términos de tiempo de ejecución y costo de recursos hay que tener en cuenta que tanto el KNN, SVM y Random forest, pueden aumentar su complejidad con el crecimiento del data set. En la práctica, se notó más con el Random Forest (que ya hemos dicutido varias veces anteriormente) ya que crea varios árboles y combinaciones de variables dependiendo de la configuración y también ahora en el SVM aunque intentamos balancear entre tiempo de entrenamiento y resultados con pequeños cambios como la cantidad de folds, repeticiones y control del tuning, con tan solo 1000 datos aproximadamente el tiempo de entrenamiento crecía bastante. Algo importante a tener en cuenta al momento de lidiar con una mayor cantidad de datos en otros estudios.
+
+En términos prácticos, si la prioridad es máxima precisión y es posible pre procesar lso datos comodamente, el KNN es la mejor opción. Pero el es una muy buena segunda opción, especialmente porque tiene un equilibrio entre flexibilidad y sobreajuste que pude ser controlado mediante el tuning. Los modelos restantes, aunque útiles en contextos específicos (como la interpretabilidad de la Regresión Logística), quedan relegados a casos donde estas ventajas secundarias justifiquen su menor accuracy. La elección final depende así del trade-off entre precisión pura, robustez/generalización, el tamaño del set de datos y la cmoplejidad computacional. De momento el top que describimos consideramos que representa bastante bien cuales consideramos como los mejores clasificadores para las casas.
 
 
 10. Genere un buen modelo de regresión, use para esto la variable del precio de la casa directamente. Tunee el modelo.
 
-
-
+```{r svm_regression, echo=FALSE}
+print("elo")
+```
 
 11. Compare los resultados del modelo de regresión generado con los de hojas anteriores que utilicen la misma variable, como la de regresión lineal, el árbol de regresión, naive bayes, KNN.
 
