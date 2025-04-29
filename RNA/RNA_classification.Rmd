@@ -1,0 +1,244 @@
+---
+title: "RNA_classification"
+author: "Irving, Chuy"
+date: "2025-04-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(caret)
+```
+
+1. Use los mismos conjuntos de entrenamiento y prueba que utilizó en las entregas anteriores
+```{r load_data, echo=FALSE}
+#train data ya tiene el 70 y test_data el 30%
+train_data <- read.csv("../train_final.csv")
+test_data <- read.csv("../test_final.csv")
+```
+
+```{r remove_na_columns, echo=FALSE}
+pct_na <- sapply(train_data, function(x) mean(is.na(x))*100)
+drop_cols <- names(pct_na[pct_na > 75])
+train_data <- train_data %>% select(-all_of(drop_cols))
+test_data  <- test_data  %>% select(-all_of(drop_cols))
+```
+Se removieron las columnas problematicas. Se remueven las columnas que no dan información útil.
+
+2. Seleccione como variable respuesta la que creó con las categorías del precio de la casa.
+```{r discretization, echo=FALSE}
+breaks <- quantile(train_data$SalePrice, probs = c(0,1/3,2/3,1), na.rm=TRUE)
+labels <- c("barata","estandar","cara")
+
+train_data$CategoriaPrecio <- cut(train_data$SalePrice, breaks=breaks, labels=labels, include.lowest=TRUE)
+test_data$CategoriaPrecio  <- cut(test_data$SalePrice,  breaks=breaks, labels=labels, include.lowest=TRUE)
+
+```
+Creamos las tres categorías de las casas (barata, estándar, cara.)
+
+3. Genere dos modelos de redes neuronales que sean capaz de clasificar usando la variable respuesta que categoriza las casas en baratas, medias y caras. Estos modelos deben tener diferentes topologías y funciones de activación.
+```{r pipeline_prepareData}
+
+# — 1. Alinear niveles de factores y NA —
+for(col in names(train_data)) {
+  if(is.character(train_data[[col]]) || is.factor(train_data[[col]])) {
+    # Convertir a caracter y manejar NAs
+    train_data[[col]] <- as.character(train_data[[col]])
+    test_data[[col]] <- as.character(test_data[[col]])
+    train_data[[col]][is.na(train_data[[col]])] <- "None"
+    test_data[[col]][is.na(test_data[[col]])] <- "None"
+    
+    # Obtener todos los niveles únicos
+    all_levels <- unique(c(train_data[[col]], test_data[[col]]))
+    
+    # Convertir a factor con niveles únicos
+    train_data[[col]] <- factor(train_data[[col]], levels = all_levels)
+    test_data[[col]] <- factor(test_data[[col]], levels = all_levels)
+  }
+}
+# — 2. Marcar la respuesta y dataset —
+train_data$CategoriaPrecio <- factor(train_data$CategoriaPrecio,
+                                     levels = c("barata","estandar","cara"))
+train_data$dataset <- "train"
+test_data$dataset  <- "test"
+
+# — 3. Unir para dummies coherentes —
+df_all <- bind_rows(train_data, test_data)
+
+# — 4. Eliminar constantes antes de dummyVars —
+n_uniq <- sapply(df_all, function(x) length(unique(x)))
+df_all <- df_all[, n_uniq > 1]
+
+
+# — 5. Crear dummies (excluyendo Id, dataset y la respuesta) —
+
+dv_all <- dummyVars(~ . - Id - dataset - CategoriaPrecio,
+                    data = df_all, fullRank = TRUE)
+X_all  <- predict(dv_all, newdata = df_all) %>% as.data.frame()
+
+# — 6. Imputar medianas en train, luego aplicar a todo —
+i_train     <- which(df_all$dataset == "train")
+X_train_raw <- X_all[i_train, ]
+pp_imp      <- preProcess(X_train_raw, method = "medianImpute")
+X_all_imp   <- predict(pp_imp, X_all)
+
+# — 7. Eliminar near-zero variance según train —
+nzv_cols <- nearZeroVar(X_all_imp[i_train, , drop=FALSE])
+if(length(nzv_cols) > 0) {
+  X_all_imp <- X_all_imp[ , -nzv_cols, drop=FALSE]
+}
+
+# — 8. Quitar alta correlación (>0.90) según train —
+corr_m   <- cor(X_all_imp[i_train, ])
+high_corr <- findCorrelation(corr_m, cutoff = 0.90)
+if(length(high_corr) > 0) {
+  X_all_imp <- X_all_imp[ , -high_corr, drop=FALSE]
+}
+
+# — 9. Yeo-Johnson + center + scale según train —
+pp_final  <- preProcess(X_all_imp[i_train, ],
+                       method = c("YeoJohnson","center","scale"))
+X_all_pp  <- predict(pp_final, X_all_imp)
+
+# — 10. Separar de nuevo train/test y respuesta —
+X_train_pp <- X_all_pp[i_train, ]
+X_test_pp  <- X_all_pp[-i_train, ]
+y_train    <- train_data$CategoriaPrecio
+y_test     <- test_data$CategoriaPrecio
+
+```
+
+```{r check}
+# Verificar dimensiones
+cat("Dimensiones train:", dim(X_train_pp), "\n")
+cat("Dimensiones test:", dim(X_test_pp), "\n")
+
+# Verificar que no haya NA
+cat("NAs en train:", sum(is.na(X_train_pp)), "\n")
+cat("NAs en test:", sum(is.na(X_test_pp)), "\n")
+
+# Verificar balance de clases
+table(y_train)
+```
+```{r second_check}
+# Identificar y eliminar columnas con varianza práctica cero
+library(caret)
+
+# Primero, asegurarnos de que todas las variables son numéricas
+train_df <- data.frame(X_train_pp)
+test_df <- data.frame(X_test_pp)
+
+# Función para detectar columnas con >95% de un solo valor
+find_constant_cols <- function(df) {
+  constant_cols <- sapply(df, function(x) {
+    if(is.numeric(x)) {
+      max_prop <- max(table(x)/length(x))
+      max_prop > 0.95
+    } else {
+      FALSE
+    }
+  })
+  names(df)[constant_cols]
+}
+
+constant_cols <- find_constant_cols(train_df)
+if(length(constant_cols) > 0) {
+  train_df <- train_df[, !names(train_df) %in% constant_cols]
+  test_df <- test_df[, !names(test_df) %in% constant_cols]
+}
+
+# Añadir la variable respuesta
+train_df$CategoriaPrecio <- y_train
+test_df$CategoriaPrecio <- y_test
+
+# Verificar estructura final
+str(train_df[, 1:5])
+cat("\nColumnas eliminadas:", constant_cols)
+
+# Verificar estructura
+str(train_df[, 1:5])  # Mostrar primeras columnas
+
+# Verificar columnas con un solo nivel
+sapply(train_df, function(x) length(unique(x)))
+
+# Eliminar manualmente si es necesario
+train_df <- train_df[, !sapply(train_df, function(x) length(unique(x)) == 1)]
+```
+
+```{r nnet_model}
+library(nnet)
+
+# 1. Preparar fórmula y datos
+predictores <- names(train_df)[!names(train_df) %in% c("CategoriaPrecio")]
+formula_nnet <- as.formula(paste("CategoriaPrecio ~", paste(predictores, collapse = " + ")))
+
+# 2. Configurar parámetros del modelo
+set.seed(123)
+modelo_nnet <- nnet(
+  formula = formula_nnet,
+  data = train_df,
+  size = 10,          # Neuronas en capa oculta
+  decay = 0.05,       # Parámetro de regularización
+  maxit = 500,        # Número máximo de iteraciones
+  MaxNWts = 5000,     # Máximo número de pesos
+  trace = TRUE,       # Mostrar progreso
+  # Configuración específica para clasificación multiclase:
+  entropy = FALSE,    # Usar softmax (no entropía cruzada)
+  censored = FALSE,
+  skip = FALSE,
+  rang = 0.1,         # Rango inicial de pesos aleatorios
+  Hess = FALSE
+)
+
+```
+
+
+```{r}
+library(caret)
+library(ggplot2)
+
+# 1. Predecir probabilidades y elegir la clase con mayor probabilidad
+probs   <- predict(modelo_nnet, newdata = test_df, type = "raw")
+pred_vec <- apply(probs, 1, function(x) names(x)[which.max(x)])
+
+# 2. Crear factores con los mismos niveles que la variable real
+true_fac <- factor(test_df$CategoriaPrecio,
+                   levels = levels(test_df$CategoriaPrecio))
+pred_fac <- factor(pred_vec,
+                   levels = levels(true_fac))
+
+# 3. Eliminar casos NA/“None” si corresponde
+nas <- is.na(true_fac) | true_fac == "None"
+if (any(nas)) {
+  cat(sum(nas), "caso(s) con etiqueta ausente eliminado(s).\n")
+  true_fac <- true_fac[!nas]
+  pred_fac <- pred_fac[!nas]
+}
+
+# 4. Quitar niveles sin observaciones
+true_fac <- droplevels(true_fac)
+pred_fac <- droplevels(pred_fac)
+
+# 5. Cálculo de la matriz de confusión
+cm_obj <- caret::confusionMatrix(pred_fac, true_fac)
+print(cm_obj)
+
+# 6. Precisión global
+cat("Precisión global:", round(cm_obj$overall["Accuracy"], 4), "\n")
+
+# 7. Heatmap de la matriz de confusión
+cm_df <- as.data.frame(cm_obj$table)
+colnames(cm_df) <- c("Real", "Predicho", "Freq")
+
+ggplot(cm_df, aes(x = Predicho, y = Real, fill = Freq)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Freq), size = 4) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  labs(title = "Matriz de Confusión", x = "Predicción", y = "Etiqueta Real") +
+  theme_minimal()
+
+
+```
+
+
