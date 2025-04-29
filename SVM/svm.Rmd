@@ -319,4 +319,371 @@ print(confusionMatrix(pred, y_test))
 ```
 La matriz de confusión revela un desempeño casi impecable: de 139 casas “baratas”, 139 fueron correctamente clasificadas y solo 1 se confundió como “estandar”; de 143 viviendas “estandar”, 143 se acertaron,32 se asignaron a “cara” y 2 a “barata”; y de 148 casas “cara”, 146 fueron bien identificadas y solo 2 pasaron a “estandar”. Las sensibilidades por clase oscilan entre 97.99 % (“cara”) y 98.58 % (“barata”), mientras que la especificidad supera el 98 % en todos los casos, destacando un excelente balance entre verdaderos positivos y negativos. La elevada precisión predictiva (PPV) de 99.29 % para “barata”, 96.62 % para “estandar” y 98.65 % para “cara” confirma que casi todas las predicciones son correctas, y las tasas de prevalencia reflejan que el modelo mantiene fuerte discriminación incluso con distribución de clases equilibrada.
 
-A pesar de que parecen ser resultados alentadores. Una precisión tan alta (0.9817) puede ser signo de sobreajuste, por lo que es importante a tomar en cuenta para evitar confusiones.
+A pesar de que parecen ser resultados alentadores. Una precisión tan alta (0.9817) con el conjunto de entrenamiento puede ser signo de sobreajuste, por lo que es importante a tomar en cuenta para evitar confusiones.
+
+7. Analice si los modelos están sobreajustados o desajustados. ¿Qué puede hacer para
+manejar el sobreajuste o desajuste?
+
+Como se mencionó anteriromente, es necesario tener en cuenta el sobreajuste, especialmente si al final se obtiene un valor de accuracy tan alto para las predicciones realizadas con el conjunto de entrenamiento. Ahora bien, sabemos que el problema no es el desbalance de datos ni los datos utilizados en si, ya que hemos usado los mismos datos para todas las prácticas y además las clases se encuentran balanceadas. Por lo que tenemos 2 formas principales para verificar la presencia de overfitting, comparación de accuracy con training y testing y la curva de aprendizaje.
+
+### Analisis de overfitting con accuracy
+
+```{r analisis_sobreajuste, echo=FALSE}
+# Comparar accuracy en train vs test
+train_pred <- predict(svm_lin, newdata = X_train_pp)
+test_pred <- predict(svm_lin, newdata = X_test_pp)
+
+train_acc <- confusionMatrix(train_pred, y_train)$overall['Accuracy']
+test_acc <- confusionMatrix(test_pred, y_test)$overall['Accuracy']
+
+cat("Accuracy en entrenamiento:", train_acc, "\n")
+cat("Accuracy en prueba:", test_acc, "\n")
+
+```
+
+Como se puede ver con este resultado, es bastante evidente que tenemos un sobreajuste en los datos. Lo que ocurre es que se está teniendo un accuracy mucho mayor con el set de entrenamiento que con el de prueba. Esto indica que el modelo aunque bien es buen clasificador al tener un accuracy de 90% con el set de datos de prueba, tiene sesgo hacia los datos parecidos al set de entrenamiento. Con el set de entrenamiento se obtuvo un accuracy de 98%, lo cuál es bastante mayor en comparación al tesing. Claramente hay sobreajuste y esto se puede confirmar también mediante un gráfico de curva de aprendizaje, comparando los errores cometidos por los modelos a medida que son entrenados. 
+
+### Análisis de overfitting con curva de aprendizaje
+
+```{r analisis_sobreajuste_curva, echo=FALSE}
+set.seed(123)
+train_sizes <- seq(0.1, 1.0, by = 0.1)
+
+train_errors <- numeric(length(train_sizes))
+test_errors <- numeric(length(train_sizes))
+
+for(i in seq_along(train_sizes)) {
+  pct <- train_sizes[i]
+  n_subset <- floor(pct * nrow(X_train_pp))
+  subset_idx <- sample(1:nrow(X_train_pp), size = n_subset)
+  
+  model_subset <- train(
+    x = X_train_pp[subset_idx, ],
+    y = y_train[subset_idx],
+    method = "svmLinear",
+    trControl = trainControl(method = "none"),
+    tuneGrid = data.frame(C = svm_lin$bestTune$C)  # Usamos el mejor C encontrado
+  )
+  
+  # Calcular error en entrenamiento (1 - accuracy)
+  train_pred <- predict(model_subset, X_train_pp[subset_idx, ])
+  train_errors[i] <- 1 - confusionMatrix(train_pred, y_train[subset_idx])$overall["Accuracy"]
+  
+  # Calcular error en prueba
+  test_pred <- predict(model_subset, X_test_pp)
+  test_errors[i] <- 1 - confusionMatrix(test_pred, y_test)$overall["Accuracy"]
+}
+
+learning_data <- data.frame(
+  TrainingSize = train_sizes * 100,
+  TrainError = train_errors,
+  TestError = test_errors
+)
+
+# Graficar
+ggplot(learning_data, aes(x = TrainingSize)) +
+  geom_line(aes(y = TrainError, color = "Entrenamiento"), size = 1) +
+  geom_line(aes(y = TestError, color = "Prueba"), size = 1) +
+  labs(title = "Curvas de Aprendizaje - SVM Lineal",
+       x = "Porcentaje de Datos de Entrenamiento",
+       y = "Tasa de Error",
+       color = "Conjunto") +
+  scale_color_manual(values = c("Entrenamiento" = "blue", "Prueba" = "red")) +
+  theme_minimal()
+
+```
+
+Veamos por partes los resultados de ambos modelos. En primer lugar podemos ver que la linea roja representa el entrenamiento con el set de prueba. Como es de esperarse al principio la linea se encuentra elevada, osea que cometió varios errores al principio. Algo que es relativamente normal ya que son datos con los cuales el set de datos no ha visto anteriormente. A medida que aumente el porcentaje de datos de entrenamiento se puede ver que los errores van disminuyendo en el caso de los datos de prueba. Ahora observando el conjunto de entrenamient, la linea azul, es claro una vez más que el modelo tiene sobreajuste. El errore del conjunto de entrenamiento es mínimo y casi llega a ser 0 a diferencia del conjunto de prueba. Lo que indica que el modelo realmente no tuvo problemas desde el inicio y está ajustado a clasificar mejor con los datos de entrenamiento. Ya que los erores siemrpe fueron mínimos la linea permanece casi recta y queda una gran bracha entre las curvas, una brecha que no llega a cerrarse. Entonces con esto sabemos que definitivamente el modelo tiene overfitting, no se están generalizando los datos y se favorecen los datos similares al set de entrenamiento. 
+
+
+```{r ajuste, echo=FALSE}
+
+#Limpieza y Preparación de Datos
+
+# Eliminar variables con varianza casi nula (más estricto)
+nzv <- caret::nearZeroVar(X_train_pp, freqCut = 99/1, uniqueCut = 5)
+if(length(nzv) > 0) {
+  X_train_pp <- X_train_pp[, -nzv, drop = FALSE]
+  X_test_pp <- X_test_pp[, -nzv, drop = FALSE]
+  cat("Se eliminaron", length(nzv), "variables con varianza casi nula\n")
+}
+
+# Eliminar correlaciones altas (umbral más estricto)
+cor_matrix <- cor(X_train_pp)
+high_corr <- caret::findCorrelation(cor_matrix, cutoff = 0.85, exact = TRUE)
+if(length(high_corr) > 0) {
+  X_train_pp <- X_train_pp[, -high_corr, drop = FALSE]
+  X_test_pp <- X_test_pp[, -high_corr, drop = FALSE]
+  cat("Se eliminaron", length(high_corr), "variables por alta correlación\n")
+}
+
+# Verificar dimensiones finales
+cat("\nDimensiones finales de los conjuntos de datos:\n")
+cat(" - Entrenamiento:", dim(X_train_pp), "\n")
+cat(" - Prueba:", dim(X_test_pp), "\n")
+
+
+#Configuración del Modelo
+
+set.seed(123) 
+
+# Configuración de control optimizada
+ctrl <- caret::trainControl(
+  method = "repeatedcv",
+  number = 5,          
+  repeats = 2,          # 2 repeticiones para evitar tatno tiempo 
+  classProbs = TRUE,
+  summaryFunction = caret::multiClassSummary,
+  savePredictions = "final",
+  verboseIter = TRUE   
+)
+
+# Grid de parámetros optimizado
+svm_grid <- expand.grid(
+  C = c(0.01, 0.1, 0.5),    
+  sigma = c(0.005, 0.01)     # cambios de valores en c
+)
+
+
+#3. Entrenamiento del Modelo
+
+
+cat("\nIniciando entrenamiento del modelo...\n")
+start_time <- Sys.time()
+
+svm_final <- caret::train(
+  x = X_train_pp,
+  y = y_train,
+  method = "svmRadial",
+  tuneGrid = svm_grid,
+  trControl = ctrl,
+  metric = "Accuracy",
+  preProcess = c("center", "scale"),  # Asegurar normalización
+  tuneLength = 5
+)
+
+end_time <- Sys.time()
+cat("\nTiempo de entrenamiento:", difftime(end_time, start_time, units = "mins"), "minutos\n")
+
+
+#4. Evaluación 
+
+# Resultados del tuning
+print(svm_final)
+plot(svm_final, main = "Optimización de Hiperparámetros SVM")
+
+# Predicciones
+train_pred <- predict(svm_final, X_train_pp)
+test_pred <- predict(svm_final, X_test_pp)
+
+# Métricas detalladas
+train_metrics <- caret::confusionMatrix(train_pred, y_train)
+test_metrics <- caret::confusionMatrix(test_pred, y_test)
+
+# Resultados comparativos
+results <- data.frame(
+  Conjunto = c("Entrenamiento", "Prueba"),
+  Accuracy = c(train_metrics$overall['Accuracy'], test_metrics$overall['Accuracy']),
+  Diferencia = c(NA, train_metrics$overall['Accuracy'] - test_metrics$overall['Accuracy'])
+)
+
+cat("\nResumen de Resultados:\n")
+print(results, row.names = FALSE)
+
+# Matriz de confusión detallada
+cat("\nMatriz de Confusión (Conjunto de Prueba):\n")
+print(test_metrics$table)
+
+```
+
+Tras evaluar los resultados iniciales, donde el modelo presentaba un claro sobreajuste, implementamos una serie de ajustes que permitieron alcanzar un mejor equilibrio entre generalizacíon y accuracy. El cambio más significativo fue cambiar de un kernel lineal a uno RBF (Radial Basis Function). Aunque este sea más flexible, lo controlamos mediante una selección de hiperparámetros. Optamos por valores conservadores de C (C = 0.1 en lugar de 1 o 10) para penalizar más los errores de entrenamiento y evitar la memorización de datos. Además, una de las diferencias más importantes también es, que ahora se está tuneando no solo  el C sino también el valor sigma, ya que estamos usando un kernel diferente. 
+
+Complementamos esto con un preprocesamiento más estricto: eliminamos variables con varianza casi nul, aumentando el freqCut a 99/1 y features altamente correlacionados con cutoff de correlación en 0.85. Reduciendo así ruido y redundancia. Seguimos usando 5 folds, principalmente para mantener un tiempo de ejcución relativamente bajo.
+
+El resultado final los consideramos bueno, al haber obtenido en entrenamiento: 88 y en prueba: 84%. La brecha ha sido reducida en un 4%, indicando que el modelo ahora generaliza mejor. Aunque sacrificamos algo de precisión en entrenamiento, ganamos estabilidad en datos no vistos, lo que es crucial en situaciones reales. 
+
+8. Compare los resultados obtenidos con los diferentes modelos que hizo en cuanto a efectividad, tiempo de procesamiento y equivocaciones (donde el algoritmo se equivocó más, donde se equivocó menos y la importancia que tienen los errores).
+
+Hasta el momento realmente tenemos 2 modelos principales. Anteriormente se realizó tuning sobre el parámetro C y de los 3 modelos obtenidos se probó el que era el mejor de estos. De dicho entrenamiento, el valor de c "óptimo" resultó ser 10 y con esto obtuvimos un modelo que tuvo métricas exageradamente altas.Teniendo accuracy mayor al 90 tanto para training como para testing, pero con la dificultad que el modelo tenía sobreajuste. 
+
+Luego de esto se realizó otro modelo con el objetivo de minimizar dicho sobre ajuste, sacrificando tal véz un poco de accuracy, pero con el fin de poder tener un model más robusto que generalize mejor los datos para eliminar o bien reducir al mínimos el sobreajuste. 
+
+Es importante mencionar que este segundo modelo donde se hizo tuning no solo de C, sino también del suavizado del kernel con sigma, fue considerablemente más lento. Llegando a tardar más que el entrenamiento realizado previamente. Esto es de esperar ya que la configuración nueva es más compleja, para poder realizar el entrenamiento y reducir la mayor posible el overfitting. Pero al final se logró obtener un modelo con un kernel distinto, donde se redujo el sobreajuste al mínimo. Obviamente se tuvo que hacer un sacrificio, ya que al final el modelo generaliza mejor a cambio de una reducción en la precisión ( ahora es de 84% para el set de prueba), pero aún así, un modelo tan sobreajustado realmente puede resultar ser problemático. 
+
+Los modelos sobreajustados tienden a ser frágiles ante los cambios dentro de los datos y puede ser propenso a fallar con datos nuevos que no conoce, aunque el accuracy del sobreajustado sea mayor, realmente el mejor modelo que tenemos es el segundo. El modelo con el nuevo kernel resulta ser mejor por generalizar mejor los datos y ser más apropiado para situaciones reales.Además en comparación con los modelos de clasificación realizados anteriormente el porcentajede precisión es bueno y curiosamente, en este caso ya vemos nuevamente el patrón de la difucultad de clasificación en la clase estandar..
+
+
+9. Compare la eficiencia del mejor modelo de SVM con los resultados obtenidos en los
+algoritmos de las hojas de trabajo anteriores que usen la misma variable respuesta (árbol de decisión y random forest, naive bayes, KNN, regresión logística). ¿Cuál es mejor para predecir? ¿Cuál se demoró más en procesar?
+
+El top de algoritmos de clasificación previamente era este:
+
+1. KNN con tuning para clasificación 86.47% 
+2. Clasificación con Regresión logística con tuning 83.49% 
+3. Random Forest para clasificación con 83%  
+4. Árbol de clasificación con 75.63%   
+5. Naive Bayes, con tuning con 75.56% 
+
+Ahora tomando en consideración el modelo de clasificación nuevo realizado con tuning y reducción de sobre ajuste el resultado nuevo sería el sigiente:
+
+1. KNN con tuning para clasificación 86.47% 
+2. SVM con kernel RBF con tuning 84.40%
+3. Clasificación con Regresión logística con tuning 83.49% 
+4. Random Forest para clasificación con 83%  
+5. Árbol de clasificación con 75.63%   
+6. Naive Bayes, con tuning con 75.56% 
+
+El KNN sigue siendo el mejor con un 86.47% de accuracy, demostrando ser excelente para capturar patrones locales en los datos, aunque su dependencia de la distancia lo hace sensible a la escala de variables y ruido, cuando se realizó este algoritmo requirió de un procesamiento bastante elaborado también. Le sigue de cerca el SVM con kernel RBF (84.4%), que, aunque un 2% menos preciso, ofrece una buena ventaja, la generalización robusta al ser entrenado con tuning y esepcíficamente para reducir el overfiting. Este equilibrio lo hace más confiable para datos nuevos frente al KNN, cuyo desempeño en producción podría degradarse si la distribución de los datos cambia. Los otros modelos (Regresión Logística: 83.49%, Random Forest: 83%) mantienen un rendimiento sólido pero están por debajo en precisión, con la desventaja añadida de mayor costo computacional en el caso de Random Forest.
+
+En términos de tiempo de ejecución y costo de recursos hay que tener en cuenta que tanto el KNN, SVM y Random forest, pueden aumentar su complejidad con el crecimiento del data set. En la práctica, se notó más con el Random Forest (que ya hemos dicutido varias veces anteriormente) ya que crea varios árboles y combinaciones de variables dependiendo de la configuración y también ahora en el SVM aunque intentamos balancear entre tiempo de entrenamiento y resultados con pequeños cambios como la cantidad de folds, repeticiones y control del tuning, con tan solo 1000 datos aproximadamente el tiempo de entrenamiento crecía bastante. Algo importante a tener en cuenta al momento de lidiar con una mayor cantidad de datos en otros estudios.
+
+En términos prácticos, si la prioridad es máxima precisión y es posible pre procesar lso datos comodamente, el KNN es la mejor opción. Pero el es una muy buena segunda opción, especialmente porque tiene un equilibrio entre flexibilidad y sobreajuste que pude ser controlado mediante el tuning. Los modelos restantes, aunque útiles en contextos específicos (como la interpretabilidad de la Regresión Logística), quedan relegados a casos donde estas ventajas secundarias justifiquen su menor accuracy. La elección final depende así del trade-off entre precisión pura, robustez/generalización, el tamaño del set de datos y la cmoplejidad computacional. De momento el top que describimos consideramos que representa bastante bien cuales consideramos como los mejores clasificadores para las casas.
+
+
+10. Genere un buen modelo de regresión, use para esto la variable del precio de la casa directamente. Tunee el modelo.
+
+```{r svm_regression_processing, echo=FALSE}
+# Seleccionar solo variables numéricas y eliminar columnas con muchos NA
+numeric_vars <- sapply(train_data, is.numeric)
+train_num <- train_data[, numeric_vars]
+test_num <- test_data[, numeric_vars]
+
+# Eliminar columnas con más del 20% de valores NA
+pct_na <- colMeans(is.na(train_num))
+cols_to_keep <- names(pct_na[pct_na < 0.2])
+train_num <- train_num[, cols_to_keep]
+test_num <- test_num[, cols_to_keep]
+
+# Imputar los valores NA restantes con la mediana
+preproc <- preProcess(train_num, method = "medianImpute")
+train_imp <- predict(preproc, train_num)
+test_imp <- predict(preproc, test_num)
+
+# Eliminar variables con varianza cercana a cero
+nzv <- nearZeroVar(train_imp)
+if(length(nzv) > 0) {
+  train_imp <- train_imp[, -nzv]
+  test_imp <- test_imp[, -nzv]
+}
+
+# Eliminar variables altamente correlacionadas
+cor_matrix <- cor(train_imp)
+high_corr <- findCorrelation(cor_matrix, cutoff = 0.9)
+if(length(high_corr) > 0) {
+  train_imp <- train_imp[, -high_corr]
+  test_imp <- test_imp[, -high_corr]
+}
+
+# Separar la variable objetivo (SalePrice) antes de escalar
+train_features <- train_imp %>% select(-SalePrice)
+test_features <- test_imp %>% select(-SalePrice)
+sale_price_train <- train_imp$SalePrice
+sale_price_test <- test_imp$SalePrice
+
+# Escalar SOLO las características (no la variable objetivo)
+preproc_scale <- preProcess(train_features, method = c("center", "scale"))
+train_features_scaled <- predict(preproc_scale, train_features)
+test_features_scaled <- predict(preproc_scale, test_features)
+
+# Recombinar los datos
+train_ready <- cbind(train_features_scaled, SalePrice = sale_price_train)
+test_ready <- cbind(test_features_scaled, SalePrice = sale_price_test)
+```
+
+
+```{r svm_regression, echo=FALSE}
+# Configurar control de entrenamiento
+ctrl <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  repeats = 2,
+  verboseIter = TRUE
+)
+
+# Definir grid de parámetros para SVR
+svr_grid <- expand.grid(
+  C = c(0.1, 1, 10),         # Parámetro de regularización
+  sigma = c(0.01, 0.1, 1)    # Ancho del kernel RBF
+)
+
+# Entrenar modelo SVR
+set.seed(123)
+svr_model <- train(
+  SalePrice ~ .,
+  data = train_ready,
+  method = "svmRadial",
+  tuneGrid = svr_grid,
+  trControl = ctrl,
+  metric = "RMSE"
+)
+
+# Ver resultados del tuning
+print(svr_model)
+plot(svr_model)
+```
+
+```{r svr_eval, echo=FALSE}
+# Hacer predicciones
+train_pred <- predict(svr_model, train_ready)
+test_pred <- predict(svr_model, test_ready)
+
+# Calcular métricas de error
+compute_metrics <- function(actual, predicted) {
+  rmse <- sqrt(mean((actual - predicted)^2))
+  rmse_percent <- (rmse / mean(actual)) * 100
+  mae <- mean(abs(actual - predicted))
+  r_squared <- cor(actual, predicted)^2
+  
+  data.frame(
+    RMSE = rmse,
+    RMSE_Percent = rmse_percent,
+    MAE = mae,
+    R2 = r_squared
+  )
+}
+
+# Métricas en entrenamiento
+train_metrics <- compute_metrics(train_ready$SalePrice, train_pred)
+cat("\nMétricas en conjunto de entrenamiento:\n")
+print(train_metrics)
+
+# Métricas en prueba
+test_metrics <- compute_metrics(test_ready$SalePrice, test_pred)
+cat("\nMétricas en conjunto de prueba:\n")
+print(test_metrics)
+
+# Gráfico de valores reales vs predichos
+plot_data <- data.frame(
+  Actual = test_ready$SalePrice,
+  Predicted = test_pred
+)
+
+ggplot(plot_data, aes(x = Actual, y = Predicted)) +
+  geom_point(alpha = 0.5) +
+  geom_abline(intercept = 0, slope = 1, color = "red") +
+  labs(title = "Valores Reales vs Predichos (SVR)",
+       x = "Precio Real",
+       y = "Precio Predicho") +
+  theme_minimal()
+
+```
+
+Luego de haber realizado el procesamiento de los datos y utilizando las variables numéricas al igual que en los demás modelos de regresión con otros algoritmos, fue posible realizar un algoritmo robusto de regresión sobre el precio de las casas 'SalesPrice'. Como se puede ver en las tablas no hay mayor diferencia entre el set de entrenamiento y el set de prueba. Teniendo el set de entrenamiento un RMSE de 26k dólares aproximadamente, mientras que el set de prueba tuvo un error de 27k dólares aproximadamente. 
+
+Siguen siendo grandes cantidades de dinero, que representan un 15% del precio de la casa, pero aún así tomando en cuenta la complejidad del problema y que tomamos únicamente las variables numéricas para hacer la predicción del precio de la casa, la verdad los resultados son bastante satisfactorios. El MAE es de aproxaimadamente 16.8k, lo cual es bueno, ya que indica que el 50% de las predicciones tendrán un error menor a esta cantidad, lo que sugiere que el modelo es preciso en la mayoría de los casos, con outliers que elevan el RMSE. Además resulta ser un muy buen modelo de regresión comparado con los realizados anteriormente.
+
+11. Compare los resultados del modelo de regresión generado con los de hojas anteriores que utilicen la misma variable, como la de regresión lineal, el árbol de regresión, naive bayes, KNN.
+
+Previamente se realizó una tabla de comparación con los resultados de cada uno de los algoritmos, donde se comparaban las métricas de cada uno de estos. 
+
+** Esta tabla estará presente en el documento de la entrega final, ya que es una tabla de word y no de rmd**
+
+El Random Forest mantuvo hasta el momento su liderazgo inicial con el menor RMSE con 31,000 dólares, demostrando ser el modelo más preciso para la regresión previamente. Sin embargo, el SVR con kernel RBF ahora muestra un RMSE de 27k, superando incluso al Random Forest en precisión absoluta. Esto es destacable, ya que el SVR logró reducir el error en aproximadamente 4,000 respecto al Random Forest. Además, sabemos que esta reducción no es causada por sobreajuste en el entrenamiento ya que se comprobó  que el RMSE casi no varía entre entrenamiento y prueba con SVR.
+
+En segundo lugar, la regresión multivariable sigue siendo una opción sólida, con un RMSE de 33,501 dólares y el R² de 0.7925, el cual era el más alto en su momento. No obstante, el SVR no solo lo supera en error teniendo menos error, sino que también alcanzó un R² de 0.89, explicando casi 90% de la variabilidad en los precios. Esto sugiere que el SVR captura relaciones no lineales que la regresión lineal tradicional no podía detecta, lo cuál ahce sentido tomando en cuenta que le kernel ayuda a tratar la no linealidad.
+
+Por otro lado, el KNN con RMSE: 44.7k y Naive Bayes 55.9k quedan bastante atrás. El KNN, aunque útil para problemas de clasificación, muestra limitaciones en regresión para este dataset, mientras que Naive Bayes confirma que no es adecuado para problemas con relaciones complejas entre variables, especialmente en este caso que tenemos una gran cantidad de variables.
+
+12. Genere un informe de los resultados y las explicaciones
+
+El informe de los resultados es generado mediante la herramienta Knit de R studio. Generamos un html y además de esto el informe estará en un documento para mayor organización.
