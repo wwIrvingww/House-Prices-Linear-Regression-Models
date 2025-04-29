@@ -167,6 +167,15 @@ train_df <- train_df[, !sapply(train_df, function(x) length(unique(x)) == 1)]
 ```
 
 ```{r nnet_model}
+
+
+```
+
+
+```{r}
+library(caret)
+library(ggplot2)
+
 library(nnet)
 
 # 1. Preparar fórmula y datos
@@ -190,13 +199,6 @@ modelo_nnet <- nnet(
   rang = 0.1,         # Rango inicial de pesos aleatorios
   Hess = FALSE
 )
-
-```
-
-
-```{r}
-library(caret)
-library(ggplot2)
 
 # 1. Predecir probabilidades y elegir la clase con mayor probabilidad
 probs   <- predict(modelo_nnet, newdata = test_df, type = "raw")
@@ -241,4 +243,39 @@ ggplot(cm_df, aes(x = Predicho, y = Real, fill = Freq)) +
 
 ```
 
+```{r caret_mlp_wd, echo=TRUE, message=FALSE, warning=FALSE}
+library(caret)
+library(ggplot2)
+
+# 1. Asegurar factores con mismos niveles
+true_fac <- factor(test_df$CategoriaPrecio, levels = c("barata","estandar","cara"))
+pred_fac <- factor(pred_factor,        levels = levels(true_fac))
+
+# 2. Crear tabla de contingencia
+cm_tab <- table(Real = true_fac, Predicho = pred_fac)
+print(cm_tab)
+
+# 3. Generar el objeto confusionMatrix a partir de la tabla
+cm_obj <- caret::confusionMatrix(cm_tab)
+print(cm_obj)
+
+# 4. Extraer y mostrar la precisión global
+acc <- cm_obj$overall["Accuracy"]
+cat("Precisión global (RSNNS MLP):", round(acc, 4), "\n")
+
+# 5. Heatmap de la matriz de confusión
+cm_df <- as.data.frame(cm_obj$table)
+colnames(cm_df) <- c("Real","Predicho","Freq")
+
+ggplot(cm_df, aes(x = Predicho, y = Real, fill = Freq)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = Freq), size = 4) +
+  scale_fill_gradient(low = "white", high = "steelblue") +
+  labs(title = "Matriz de Confusión – RSNNS MLP",
+       x = "Predicción", y = "Etiqueta Real") +
+  theme_minimal()
+
+
+
+```
 
