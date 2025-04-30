@@ -9,6 +9,8 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(caret)
+library(ggplot2)
+library(nnet)
 ```
 
 1. Use los mismos conjuntos de entrenamiento y prueba que utilizó en las entregas anteriores
@@ -38,7 +40,7 @@ test_data$CategoriaPrecio  <- cut(test_data$SalePrice,  breaks=breaks, labels=la
 Creamos las tres categorías de las casas (barata, estándar, cara.)
 
 3. Genere dos modelos de redes neuronales que sean capaz de clasificar usando la variable respuesta que categoriza las casas en baratas, medias y caras. Estos modelos deben tener diferentes topologías y funciones de activación.
-```{r pipeline_prepareData}
+```{r pipeline_prepareData, include=FALSE}
 
 # — 1. Alinear niveles de factores y NA —
 for(col in names(train_data)) {
@@ -109,7 +111,7 @@ y_test     <- test_data$CategoriaPrecio
 
 ```
 
-```{r check}
+```{r check, include=FALSE}
 # Verificar dimensiones
 cat("Dimensiones train:", dim(X_train_pp), "\n")
 cat("Dimensiones test:", dim(X_test_pp), "\n")
@@ -121,7 +123,7 @@ cat("NAs en test:", sum(is.na(X_test_pp)), "\n")
 # Verificar balance de clases
 table(y_train)
 ```
-```{r second_check}
+```{r second_check, include=FALSE}
 # Identificar y eliminar columnas con varianza práctica cero
 library(caret)
 
@@ -166,17 +168,13 @@ sapply(train_df, function(x) length(unique(x)))
 train_df <- train_df[, !sapply(train_df, function(x) length(unique(x)) == 1)]
 ```
 
-```{r nnet_model}
 
+4. Use los modelos para predecir el valor de la variable respuesta.
+5. Haga las matrices de confusion respectivas.
+6. Compare los resultados obtenidos con los diferentes modelos de clasificación usando redes neuronales en cuanto a efectividad, tiempo de procesamiento y equivocaciones (donde el algoritmo se equivocó más, menos y la importancia que tienen los errores.)
 
-```
-
-
-```{r}
-library(caret)
-library(ggplot2)
-
-library(nnet)
+#Primer modelo de Red Neuronal
+```{r first_model, echo=FALSE}
 
 # 1. Preparar fórmula y datos
 predictores <- names(train_df)[!names(train_df) %in% c("CategoriaPrecio")]
@@ -242,40 +240,163 @@ ggplot(cm_df, aes(x = Predicho, y = Real, fill = Freq)) +
 
 
 ```
+Se realizó un modelo de red Neuronal utilizando la función nnet de la librería de nnet supervisada de una sola capa oculta para una tarea de clasificación multiclase (predecir "CategoriaPrecio" a partir de varias variables predictoras). Los parametros utilizados son los siguientes: Se utilizó un size de 10 para el número de neuronas en la capa oculta; un decay de 0.05 para prevenir overfitting, un máximo de 500 iteraciones, un límite superior de 5000 del número de pesos.  
 
-```{r caret_mlp_wd, echo=TRUE, message=FALSE, warning=FALSE}
-library(caret)
-library(ggplot2)
+Los resultados son bastante optimistas. Se alcanzó un accuracy de 0.8876 (con un intervalo de confianza del 95% entre 0.8542 y 0.9157), un número aceptable que no roza el overfitting, también tenemos un kappa de 0.8314, un nivel muy bueno que indica una fuerte concordancia más allá del azar. Con respecto de la matriz de confusión, observamos que el modelo es más susceptible a la clase barata (con 130 aciertos de 141 posibles) y menos a la clase estandar (117 correctas de 146), donde se concentran la mayoría de los errores.
 
-# 1. Asegurar factores con mismos niveles
-true_fac <- factor(test_df$CategoriaPrecio, levels = c("barata","estandar","cara"))
-pred_fac <- factor(pred_factor,        levels = levels(true_fac))
-
-# 2. Crear tabla de contingencia
-cm_tab <- table(Real = true_fac, Predicho = pred_fac)
-print(cm_tab)
-
-# 3. Generar el objeto confusionMatrix a partir de la tabla
-cm_obj <- caret::confusionMatrix(cm_tab)
-print(cm_obj)
-
-# 4. Extraer y mostrar la precisión global
-acc <- cm_obj$overall["Accuracy"]
-cat("Precisión global (RSNNS MLP):", round(acc, 4), "\n")
-
-# 5. Heatmap de la matriz de confusión
-cm_df <- as.data.frame(cm_obj$table)
-colnames(cm_df) <- c("Real","Predicho","Freq")
-
-ggplot(cm_df, aes(x = Predicho, y = Real, fill = Freq)) +
-  geom_tile(color = "white") +
-  geom_text(aes(label = Freq), size = 4) +
-  scale_fill_gradient(low = "white", high = "steelblue") +
-  labs(title = "Matriz de Confusión – RSNNS MLP",
-       x = "Predicción", y = "Etiqueta Real") +
-  theme_minimal()
+Detallando más se puede decir que la clase cara muestra el mejor desempeño con 140 aciertos de 149 (94% sensibilidad). Existe cierta confusión entre estandar y barata (16 errores) y entre estandar y cara (13 errores). Las precisiones por clase son consistentes: 91.5% para cara, 89% para barata y 85.4% para estandar Los valores predictivos negativos superan el 90% en todas las categorías, indicando buena capacidad para descartar clases.
 
 
 
+
+
+#Segundo modelo de Red Neuronal
+```{r}
+# Recodifica las categorías como numéricas temporalmente
+train_df$CategoriaPrecio_num <- as.numeric(factor(train_df$CategoriaPrecio, levels = niveles_conf))
+test_df$CategoriaPrecio_num <- as.numeric(factor(test_df$CategoriaPrecio, levels = niveles_conf))
+
+# Verifica la codificación
+table(train_df$CategoriaPrecio, train_df$CategoriaPrecio_num)
 ```
+```{r}
+library(nnet)
+library(caret)
 
+# 1. DIAGNÓSTICO ----------------------------------------------------------
+cat("\n=== DIAGNÓSTICO INICIAL ===\n")
+
+# Verificar distribución de clases
+cat("\nDistribución de clases en entrenamiento:\n")
+train_dist <- table(train_df$CategoriaPrecio)
+print(train_dist)
+cat("Proporciones:", round(prop.table(train_dist), 3), "\n\n")
+
+# Verificar distribución en test
+cat("Distribución en test:\n")
+test_dist <- table(test_df$CategoriaPrecio)
+print(test_dist)
+cat("\n")
+
+# Verificar estructura de datos
+cat("Estructura de los datos:\n")
+str(train_df[, c("CategoriaPrecio", head(setdiff(names(train_df), "CategoriaPrecio"), 3))])
+
+# 2. CORRECCIÓN INMEDIATA -------------------------------------------------
+cat("\n=== CORRECCIÓN MANUAL ===\n")
+
+# Inversión de categorías (solución temporal)
+pred_vec_corregido <- ifelse(pred_vec_alt == "cara", "barata",
+                            ifelse(pred_vec_alt == "barata", "cara", 
+                                  "estandar"))
+
+# Matriz de confusión corregida
+cat("\nMatriz de confusión corregida:\n")
+cm_corregido <- confusionMatrix(
+  factor(pred_vec_corregido, levels = niveles_conf),
+  factor(test_df$CategoriaPrecio, levels = niveles_conf)
+)
+print(cm_corregido)
+
+# 3. REENTRENAMIENTO MEJORADO --------------------------------------------
+cat("\n=== REENTRENAMIENTO DEL MODELO ===\n")
+
+set.seed(321)
+modelo_mejorado <- nnet(
+  formula = CategoriaPrecio ~ .,
+  data = train_df,
+  size = 15,
+  decay = 0.05,
+  maxit = 500,
+  MaxNWts = 10000,
+  trace = TRUE,
+  entropy = TRUE,
+  skip = TRUE,
+  # Parámetros adicionales para mejorar convergencia
+  rang = 0.1,
+  abstol = 1.0e-8,
+  reltol = 1.0e-8
+)
+
+# Evaluación del nuevo modelo
+cat("\nEvaluación del modelo mejorado:\n")
+pred_mejorada <- predict(modelo_mejorado, newdata = test_df, type = "class")
+cm_mejorada <- confusionMatrix(
+  factor(pred_mejorada, levels = niveles_conf),
+  factor(test_df$CategoriaPrecio, levels = niveles_conf)
+)
+print(cm_mejorada)
+
+# Guardar modelo
+saveRDS(modelo_mejorado, "modelo_mejorado.rds")
+cat("\nModelo guardado como 'modelo_mejorado.rds'\n")
+
+# VISUALIZACIÓN COMPARATIVA ----------------------------------------------
+cat("\n=== RESUMEN COMPARATIVO ===\n")
+
+# Crear tabla comparativa
+resultados <- data.frame(
+  Modelo = c("Original", "Corregido", "Mejorado"),
+  Accuracy = c(
+    round(mean(pred_vec_alt == test_df$CategoriaPrecio, na.rm = TRUE), 4),
+    round(cm_corregido$overall["Accuracy"], 4),
+    round(cm_mejorada$overall["Accuracy"], 4)
+  ),
+  Kappa = c(
+    NA,
+    round(cm_corregido$overall["Kappa"], 4),
+    round(cm_mejorada$overall["Kappa"], 4)
+  )
+)
+
+print(resultados)
+
+# 7. HEATMAP DE MATRIZ DE CONFUSIÓN --------------------------------------
+cat("\n=== VISUALIZACIÓN DE MATRIZ DE CONFUSIÓN ===\n")
+
+# Convertir a dataframe para ggplot
+cm_df <- as.data.frame(cm_mejorada$table)
+colnames(cm_df) <- c("Real", "Predicho", "Frecuencia")
+
+# Crear el heatmap
+heatmap_confusion <- ggplot(cm_df, aes(x = Predicho, y = Real, fill = Frecuencia)) +
+  geom_tile(color = "white", linewidth = 0.8) +  # Celdas con bordes blancos
+  geom_text(aes(label = Frecuencia), size = 5, color = "black") +  # Texto en negro
+  scale_fill_gradient(
+    low = "white", 
+    high = "#2b8cbe",  # Azul más moderno
+    limits = c(0, max(cm_df$Frecuencia))  # Mismo rango para todas las celdas
+  ) +
+  labs(
+    title = "Matriz de Confusión - Modelo Mejorado",
+    subtitle = paste("Precisión:", round(cm_mejorada$overall["Accuracy"], 3)),
+    x = "Predicción del Modelo",
+    y = "Valor Real",
+    fill = "Casos"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(hjust = 0.5),
+    panel.grid = element_blank(),
+    legend.position = "right"
+  ) +
+  coord_fixed()  # Para celdas cuadradas
+
+# Mostrar el gráfico
+print(heatmap_confusion)
+
+# Guardar el gráfico (opcional)
+ggsave("heatmap_confusion.png", plot = heatmap_confusion, width = 8, height = 6, dpi = 300)
+cat("\nHeatmap guardado como 'heatmap_confusion.png'\n")
+```
+Se realizó un segundo modelo neuronal utilizando nuevamente la función nnet de la librería del mismo nombre, manteniendo la arquitectura de red supervisada con una sola capa oculta para la clasificación multiclase de "CategoriaPrecio". Los parámetros clave de este modelo mejorado fueron: un tamaño (size) de 15 neuronas en la capa oculta (aumentando las 10 originales), un decay de 0.05 para controlar el sobreajuste, un máximo de 500 iteraciones y un límite superior de 10,000 pesos.  
+
+Los resultados obtenidos son notablemente altos, mostrando un accuracy de 0.9954 y un kappa de 0.9931, lo que aparentemente indica un rendimiento casi perfecto. Sin embargo, estos excelentes resultados podrían ser indicio de posible overfitting tomadno en cuenta que el modelo no comete prácticamente errores (solo 2 en 436 predicciones) y todas las métricas por clase superan el 98.6% de efectivida.  
+
+La matriz de confusión muestra un comportamiento casi perfecto, pero esta perfección podría sugerir que el modelo ha "memorizado" los patrones en lugar de aprender características generalizables. Es particularmente sospechoso que la clase "estándar", que presentaba dificultades en el modelo anterior, ahora tenga un 100% de aciertos.
+
+#Sobreajuste
+7. Analice si no hay sobreajuste en los modelos
+#Tuneando parametros
+8. Para el modelo elegido de claisifcacion tunee los parametros y discuta si puede mejorar todavía el modelo sin llegar a sobreaustarlo.
