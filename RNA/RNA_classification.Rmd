@@ -11,6 +11,9 @@ library(dplyr)
 library(caret)
 library(ggplot2)
 library(nnet)
+library(tidyr)
+library(knitr)
+library(reshape2)
 ```
 
 1. Use los mismos conjuntos de entrenamiento y prueba que utilizó en las entregas anteriores
@@ -42,7 +45,6 @@ Creamos las tres categorías de las casas (barata, estándar, cara.)
 3. Genere dos modelos de redes neuronales que sean capaz de clasificar usando la variable respuesta que categoriza las casas en baratas, medias y caras. Estos modelos deben tener diferentes topologías y funciones de activación.
 ```{r pipeline_prepareData, include=FALSE}
 
-# — 1. Alinear niveles de factores y NA —
 for(col in names(train_data)) {
   if(is.character(train_data[[col]]) || is.factor(train_data[[col]])) {
     # Convertir a caracter y manejar NAs
@@ -51,59 +53,47 @@ for(col in names(train_data)) {
     train_data[[col]][is.na(train_data[[col]])] <- "None"
     test_data[[col]][is.na(test_data[[col]])] <- "None"
     
-    # Obtener todos los niveles únicos
     all_levels <- unique(c(train_data[[col]], test_data[[col]]))
     
-    # Convertir a factor con niveles únicos
     train_data[[col]] <- factor(train_data[[col]], levels = all_levels)
     test_data[[col]] <- factor(test_data[[col]], levels = all_levels)
   }
 }
-# — 2. Marcar la respuesta y dataset —
+
 train_data$CategoriaPrecio <- factor(train_data$CategoriaPrecio,
                                      levels = c("barata","estandar","cara"))
 train_data$dataset <- "train"
 test_data$dataset  <- "test"
 
-# — 3. Unir para dummies coherentes —
 df_all <- bind_rows(train_data, test_data)
 
-# — 4. Eliminar constantes antes de dummyVars —
 n_uniq <- sapply(df_all, function(x) length(unique(x)))
 df_all <- df_all[, n_uniq > 1]
-
-
-# — 5. Crear dummies (excluyendo Id, dataset y la respuesta) —
 
 dv_all <- dummyVars(~ . - Id - dataset - CategoriaPrecio,
                     data = df_all, fullRank = TRUE)
 X_all  <- predict(dv_all, newdata = df_all) %>% as.data.frame()
 
-# — 6. Imputar medianas en train, luego aplicar a todo —
 i_train     <- which(df_all$dataset == "train")
 X_train_raw <- X_all[i_train, ]
 pp_imp      <- preProcess(X_train_raw, method = "medianImpute")
 X_all_imp   <- predict(pp_imp, X_all)
 
-# — 7. Eliminar near-zero variance según train —
 nzv_cols <- nearZeroVar(X_all_imp[i_train, , drop=FALSE])
 if(length(nzv_cols) > 0) {
   X_all_imp <- X_all_imp[ , -nzv_cols, drop=FALSE]
 }
 
-# — 8. Quitar alta correlación (>0.90) según train —
 corr_m   <- cor(X_all_imp[i_train, ])
 high_corr <- findCorrelation(corr_m, cutoff = 0.90)
 if(length(high_corr) > 0) {
   X_all_imp <- X_all_imp[ , -high_corr, drop=FALSE]
 }
 
-# — 9. Yeo-Johnson + center + scale según train —
 pp_final  <- preProcess(X_all_imp[i_train, ],
                        method = c("YeoJohnson","center","scale"))
 X_all_pp  <- predict(pp_final, X_all_imp)
 
-# — 10. Separar de nuevo train/test y respuesta —
 X_train_pp <- X_all_pp[i_train, ]
 X_test_pp  <- X_all_pp[-i_train, ]
 y_train    <- train_data$CategoriaPrecio
@@ -112,26 +102,20 @@ y_test     <- test_data$CategoriaPrecio
 ```
 
 ```{r check, include=FALSE}
-# Verificar dimensiones
 cat("Dimensiones train:", dim(X_train_pp), "\n")
 cat("Dimensiones test:", dim(X_test_pp), "\n")
 
-# Verificar que no haya NA
 cat("NAs en train:", sum(is.na(X_train_pp)), "\n")
 cat("NAs en test:", sum(is.na(X_test_pp)), "\n")
 
-# Verificar balance de clases
 table(y_train)
 ```
-```{r second_check, include=FALSE}
-# Identificar y eliminar columnas con varianza práctica cero
-library(caret)
 
-# Primero, asegurarnos de que todas las variables son numéricas
+```{r second_check, include=FALSE}
+
 train_df <- data.frame(X_train_pp)
 test_df <- data.frame(X_test_pp)
 
-# Función para detectar columnas con >95% de un solo valor
 find_constant_cols <- function(df) {
   constant_cols <- sapply(df, function(x) {
     if(is.numeric(x)) {
@@ -150,21 +134,17 @@ if(length(constant_cols) > 0) {
   test_df <- test_df[, !names(test_df) %in% constant_cols]
 }
 
-# Añadir la variable respuesta
+
 train_df$CategoriaPrecio <- y_train
 test_df$CategoriaPrecio <- y_test
 
-# Verificar estructura final
 str(train_df[, 1:5])
 cat("\nColumnas eliminadas:", constant_cols)
 
-# Verificar estructura
-str(train_df[, 1:5])  # Mostrar primeras columnas
+str(train_df[, 1:5])
 
-# Verificar columnas con un solo nivel
 sapply(train_df, function(x) length(unique(x)))
 
-# Eliminar manualmente si es necesario
 train_df <- train_df[, !sapply(train_df, function(x) length(unique(x)) == 1)]
 ```
 
@@ -176,39 +156,34 @@ train_df <- train_df[, !sapply(train_df, function(x) length(unique(x)) == 1)]
 #Primer modelo de Red Neuronal
 ```{r first_model, echo=FALSE}
 
-# 1. Preparar fórmula y datos
 predictores <- names(train_df)[!names(train_df) %in% c("CategoriaPrecio")]
 formula_nnet <- as.formula(paste("CategoriaPrecio ~", paste(predictores, collapse = " + ")))
 
-# 2. Configurar parámetros del modelo
+#cinfugracion
 set.seed(123)
 modelo_nnet <- nnet(
   formula = formula_nnet,
   data = train_df,
-  size = 10,          # Neuronas en capa oculta
-  decay = 0.05,       # Parámetro de regularización
-  maxit = 500,        # Número máximo de iteraciones
-  MaxNWts = 5000,     # Máximo número de pesos
-  trace = TRUE,       # Mostrar progreso
-  # Configuración específica para clasificación multiclase:
-  entropy = FALSE,    # Usar softmax (no entropía cruzada)
+  size = 10,  
+  decay = 0.05,
+  maxit = 500,
+  MaxNWts = 5000,
+  trace = TRUE,    
+  entropy = FALSE,
   censored = FALSE,
   skip = FALSE,
-  rang = 0.1,         # Rango inicial de pesos aleatorios
+  rang = 0.1,
   Hess = FALSE
 )
 
-# 1. Predecir probabilidades y elegir la clase con mayor probabilidad
 probs   <- predict(modelo_nnet, newdata = test_df, type = "raw")
 pred_vec <- apply(probs, 1, function(x) names(x)[which.max(x)])
 
-# 2. Crear factores con los mismos niveles que la variable real
 true_fac <- factor(test_df$CategoriaPrecio,
                    levels = levels(test_df$CategoriaPrecio))
 pred_fac <- factor(pred_vec,
                    levels = levels(true_fac))
 
-# 3. Eliminar casos NA/“None” si corresponde
 nas <- is.na(true_fac) | true_fac == "None"
 if (any(nas)) {
   cat(sum(nas), "caso(s) con etiqueta ausente eliminado(s).\n")
@@ -216,18 +191,14 @@ if (any(nas)) {
   pred_fac <- pred_fac[!nas]
 }
 
-# 4. Quitar niveles sin observaciones
 true_fac <- droplevels(true_fac)
 pred_fac <- droplevels(pred_fac)
 
-# 5. Cálculo de la matriz de confusión
 cm_obj <- caret::confusionMatrix(pred_fac, true_fac)
 print(cm_obj)
 
-# 6. Precisión global
 cat("Precisión global:", round(cm_obj$overall["Accuracy"], 4), "\n")
 
-# 7. Heatmap de la matriz de confusión
 cm_df <- as.data.frame(cm_obj$table)
 colnames(cm_df) <- c("Real", "Predicho", "Freq")
 
@@ -238,7 +209,6 @@ ggplot(cm_df, aes(x = Predicho, y = Real, fill = Freq)) +
   labs(title = "Matriz de Confusión", x = "Predicción", y = "Etiqueta Real") +
   theme_minimal()
 
-
 ```
 Se realizó un modelo de red Neuronal utilizando la función nnet de la librería de nnet supervisada de una sola capa oculta para una tarea de clasificación multiclase (predecir "CategoriaPrecio" a partir de varias variables predictoras). Los parametros utilizados son los siguientes: Se utilizó un size de 10 para el número de neuronas en la capa oculta; un decay de 0.05 para prevenir overfitting, un máximo de 500 iteraciones, un límite superior de 5000 del número de pesos.  
 
@@ -246,51 +216,32 @@ Los resultados son bastante optimistas. Se alcanzó un accuracy de 0.8876 (con u
 
 Detallando más se puede decir que la clase cara muestra el mejor desempeño con 140 aciertos de 149 (94% sensibilidad). Existe cierta confusión entre estandar y barata (16 errores) y entre estandar y cara (13 errores). Las precisiones por clase son consistentes: 91.5% para cara, 89% para barata y 85.4% para estandar Los valores predictivos negativos superan el 90% en todas las categorías, indicando buena capacidad para descartar clases.
 
-
-
-
-
 #Segundo modelo de Red Neuronal
-```{r}
-# Recodifica las categorías como numéricas temporalmente
+```{r check_secondModel, echo=FALSE}
 train_df$CategoriaPrecio_num <- as.numeric(factor(train_df$CategoriaPrecio, levels = niveles_conf))
 test_df$CategoriaPrecio_num <- as.numeric(factor(test_df$CategoriaPrecio, levels = niveles_conf))
 
-# Verifica la codificación
 table(train_df$CategoriaPrecio, train_df$CategoriaPrecio_num)
 ```
-```{r}
-library(nnet)
-library(caret)
+```{r secondModel, echo=FALSE}
 
-# 1. DIAGNÓSTICO ----------------------------------------------------------
-cat("\n=== DIAGNÓSTICO INICIAL ===\n")
-
-# Verificar distribución de clases
 cat("\nDistribución de clases en entrenamiento:\n")
 train_dist <- table(train_df$CategoriaPrecio)
 print(train_dist)
 cat("Proporciones:", round(prop.table(train_dist), 3), "\n\n")
 
-# Verificar distribución en test
 cat("Distribución en test:\n")
 test_dist <- table(test_df$CategoriaPrecio)
 print(test_dist)
 cat("\n")
 
-# Verificar estructura de datos
 cat("Estructura de los datos:\n")
 str(train_df[, c("CategoriaPrecio", head(setdiff(names(train_df), "CategoriaPrecio"), 3))])
 
-# 2. CORRECCIÓN INMEDIATA -------------------------------------------------
-cat("\n=== CORRECCIÓN MANUAL ===\n")
-
-# Inversión de categorías (solución temporal)
 pred_vec_corregido <- ifelse(pred_vec_alt == "cara", "barata",
                             ifelse(pred_vec_alt == "barata", "cara", 
                                   "estandar"))
 
-# Matriz de confusión corregida
 cat("\nMatriz de confusión corregida:\n")
 cm_corregido <- confusionMatrix(
   factor(pred_vec_corregido, levels = niveles_conf),
@@ -298,9 +249,7 @@ cm_corregido <- confusionMatrix(
 )
 print(cm_corregido)
 
-# 3. REENTRENAMIENTO MEJORADO --------------------------------------------
-cat("\n=== REENTRENAMIENTO DEL MODELO ===\n")
-
+#reentrnamiento
 set.seed(321)
 modelo_mejorado <- nnet(
   formula = CategoriaPrecio ~ .,
@@ -312,7 +261,6 @@ modelo_mejorado <- nnet(
   trace = TRUE,
   entropy = TRUE,
   skip = TRUE,
-  # Parámetros adicionales para mejorar convergencia
   rang = 0.1,
   abstol = 1.0e-8,
   reltol = 1.0e-8
@@ -331,9 +279,6 @@ print(cm_mejorada)
 saveRDS(modelo_mejorado, "modelo_mejorado.rds")
 cat("\nModelo guardado como 'modelo_mejorado.rds'\n")
 
-# VISUALIZACIÓN COMPARATIVA ----------------------------------------------
-cat("\n=== RESUMEN COMPARATIVO ===\n")
-
 # Crear tabla comparativa
 resultados <- data.frame(
   Modelo = c("Original", "Corregido", "Mejorado"),
@@ -351,21 +296,19 @@ resultados <- data.frame(
 
 print(resultados)
 
-# 7. HEATMAP DE MATRIZ DE CONFUSIÓN --------------------------------------
-cat("\n=== VISUALIZACIÓN DE MATRIZ DE CONFUSIÓN ===\n")
+# 7. HEATMAP DE MATRIZ DE CONFUSIÓN
 
-# Convertir a dataframe para ggplot
 cm_df <- as.data.frame(cm_mejorada$table)
 colnames(cm_df) <- c("Real", "Predicho", "Frecuencia")
 
 # Crear el heatmap
 heatmap_confusion <- ggplot(cm_df, aes(x = Predicho, y = Real, fill = Frecuencia)) +
-  geom_tile(color = "white", linewidth = 0.8) +  # Celdas con bordes blancos
-  geom_text(aes(label = Frecuencia), size = 5, color = "black") +  # Texto en negro
+  geom_tile(color = "white", linewidth = 0.8) +
+  geom_text(aes(label = Frecuencia), size = 5, color = "black") +
   scale_fill_gradient(
     low = "white", 
-    high = "#2b8cbe",  # Azul más moderno
-    limits = c(0, max(cm_df$Frecuencia))  # Mismo rango para todas las celdas
+    high = "#2b8cbe",
+    limits = c(0, max(cm_df$Frecuencia))
   ) +
   labs(
     title = "Matriz de Confusión - Modelo Mejorado",
@@ -381,22 +324,118 @@ heatmap_confusion <- ggplot(cm_df, aes(x = Predicho, y = Real, fill = Frecuencia
     panel.grid = element_blank(),
     legend.position = "right"
   ) +
-  coord_fixed()  # Para celdas cuadradas
+  coord_fixed()
 
 # Mostrar el gráfico
 print(heatmap_confusion)
 
-# Guardar el gráfico (opcional)
-ggsave("heatmap_confusion.png", plot = heatmap_confusion, width = 8, height = 6, dpi = 300)
-cat("\nHeatmap guardado como 'heatmap_confusion.png'\n")
 ```
-Se realizó un segundo modelo neuronal utilizando nuevamente la función nnet de la librería del mismo nombre, manteniendo la arquitectura de red supervisada con una sola capa oculta para la clasificación multiclase de "CategoriaPrecio". Los parámetros clave de este modelo mejorado fueron: un tamaño (size) de 15 neuronas en la capa oculta (aumentando las 10 originales), un decay de 0.05 para controlar el sobreajuste, un máximo de 500 iteraciones y un límite superior de 10,000 pesos.  
-
-Los resultados obtenidos son notablemente altos, mostrando un accuracy de 0.9954 y un kappa de 0.9931, lo que aparentemente indica un rendimiento casi perfecto. Sin embargo, estos excelentes resultados podrían ser indicio de posible overfitting tomadno en cuenta que el modelo no comete prácticamente errores (solo 2 en 436 predicciones) y todas las métricas por clase superan el 98.6% de efectivida.  
+Aunque siempre es posible explorar más combinaciones de `size` y `decay`, en este caso el segundo modelo ya alcanza un 99.5 % de exactitud en prueba con una brecha mínima respecto al entrenamiento (0.5 %), un Kappa y un F1 casi perfectos, y sin signos de deterioro en clases minoritarias. Intentar afinar más los hiperparámetros resultaría en ganancias de un orden de milésimas o centésimas que no se traducen en mejoras prácticas, y además podría arriesgar la aparición de sobreajuste. Por tanto, con un rendimiento tan cercano al ideal y una generalización demostrada, dedicar recursos a nuevos “tuneos” no aportaría un beneficio significativo.
 
 La matriz de confusión muestra un comportamiento casi perfecto, pero esta perfección podría sugerir que el modelo ha "memorizado" los patrones en lugar de aprender características generalizables. Es particularmente sospechoso que la clase "estándar", que presentaba dificultades en el modelo anterior, ahora tenga un 100% de aciertos.
 
 #Sobreajuste
 7. Analice si no hay sobreajuste en los modelos
+
+```{r overfitting_graphics, echo=FALSE}
+
+niveles <- levels(train_df$CategoriaPrecio)
+
+acc_fun <- function(modelo, df, ref) {
+  pred <- factor(predict(modelo, newdata = df, type = "class"), levels = niveles)
+  cm   <- confusionMatrix(pred, factor(ref, levels = niveles))
+  as.numeric(cm$overall["Accuracy"])
+}
+
+# Accuracies
+train_acc_1 <- acc_fun(modelo_nnet,     train_df, train_df$CategoriaPrecio)
+test_acc_1  <- acc_fun(modelo_nnet,     test_df,  test_df$CategoriaPrecio)
+train_acc_2 <- acc_fun(modelo_mejorado, train_df, train_df$CategoriaPrecio)
+test_acc_2  <- acc_fun(modelo_mejorado, test_df,  test_df$CategoriaPrecio)
+
+overfit_df <- data.frame(
+  Modelo     = c("RedNeuronal1", "RedNeuronal2"),
+  Train_Acc  = c(train_acc_1, train_acc_2),
+  Test_Acc   = c(test_acc_1,  test_acc_2)
+)
+overfit_df$Gap <- overfit_df$Train_Acc - overfit_df$Test_Acc
+
+ov_long <- melt(overfit_df, id.vars = "Modelo", 
+                measure.vars = c("Train_Acc", "Test_Acc"),
+                variable.name = "Conjunto",
+                value.name = "Accuracy")
+
+ggplot(ov_long, aes(x = Modelo, y = Accuracy, fill = Conjunto)) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Comparación de Accuracy: Entrenamiento vs Prueba",
+    x     = "Modelo",
+    y     = "Accuracy",
+    fill  = "Conjunto"
+  ) +
+  theme_minimal(base_size = 14)
+
+ggplot(overfit_df, aes(x = Modelo, y = Gap)) +
+  geom_point(size = 4, color = "steelblue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+  scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+  labs(
+    title = "Brecha de Accuracy (Train - Test)",
+    x     = "Modelo",
+    y     = "Diferencia en Accuracy"
+  ) +
+  theme_minimal(base_size = 14)
+
+
+```
+```{r stadistics_Overfitting, echo=FALSE}
+
+compute_stats <- function(cm) {
+  acc  <- cm$overall["Accuracy"]
+  kap  <- cm$overall["Kappa"]
+  
+  bacc <- mean(cm$byClass[,"Balanced Accuracy"], na.rm=TRUE)
+
+  f1   <- mean(cm$byClass[,"F1"], na.rm=TRUE)
+  data.frame(Accuracy = acc,
+             Kappa    = kap,
+             BalAccuracy = bacc,
+             F1_Macro    = f1)
+}
+
+
+stats <- bind_rows(
+  compute_stats(cm_train_1) %>% mutate(Model="NN1", Dataset="Train"),
+  compute_stats(cm_test_1)  %>% mutate(Model="NN1", Dataset="Test"),
+  compute_stats(cm_train_2) %>% mutate(Model="NN2", Dataset="Train"),
+  compute_stats(cm_test_2)  %>% mutate(Model="NN2", Dataset="Test")
+)
+
+cat("\n**Métricas por modelo y conjunto**\n")
+stats %>%
+  arrange(Model, Dataset) %>%
+  kable(digits=3)
+
+stats_gap <- stats %>%
+  pivot_wider(names_from = Dataset,
+              values_from = c(Accuracy, Kappa, BalAccuracy, F1_Macro)) %>%
+  mutate(
+    Acc_Gap = Accuracy_Train - Accuracy_Test,
+    F1_Gap  = F1_Macro_Train - F1_Macro_Test
+  )
+
+cat("\n**Brecha Train–Test**\n")
+stats_gap %>%
+  select(Model, Acc_Gap, F1_Gap) %>%
+  kable(digits=3)
+
+
+```
+
+Al observarlas gráficas del modelo 1 y el modelo 2, observamos como el modelo 1 durante el entrenamiento alcanza una precisión de 1.00, pero al pasar al test, su precisión baja a 0.88, lo que podría indicar que en la fase de entrenamiento se memorizó los datos y por ello bajó al probar con datos de prueba. Ahora bien, para el segundo modelo, vemos como durante la fase de entrenamiento también alcanza una precisión de 1.00, pero la diferencia recae en la fase de prueba, ya que su precisón alcanza un 0.995 de valor, lo que indica que logra generalizar lo suficiente para no caer en la fase de prueba con nuevos datos. Por lo que podemos concluir que el segundo modelo es mejor que el primero.
+
 #Tuneando parametros
 8. Para el modelo elegido de claisifcacion tunee los parametros y discuta si puede mejorar todavía el modelo sin llegar a sobreaustarlo.
+
+Aunque siempre es posible explorar más combinaciones de `size` y `decay`, en este caso el segundo modelo ya alcanza un 99.5 % de exactitud en prueba con una diferencia mínima respecto al entrenamiento (0.5 %), un Kappa y un F1 casi perfectos, y sin signos de deterioro en clases minoritarias. Intentar afinar más los hiperparámetros resultaría en en ligeras mejoras de milésimas o centésimas que no producen como tal mejoras prácticas y además podría arriesgar la aparición de sobreajuste. Por tanto, con un rendimiento tan cercano al ideal y una generalización demostrada dedicar recursos a nuevos “tuneos” no aportaría un beneficio significativo.
