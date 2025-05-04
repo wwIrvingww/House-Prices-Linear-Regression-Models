@@ -1,0 +1,118 @@
+---
+title: "RNA_regression"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(caret)
+library(neuralnet)
+library(MASS)
+library(dplyr)
+```
+
+```{r load_data, echo=FALSE}
+#train data ya tiene el 70 y test_data el 30%
+train_data <- read.csv("../train_final.csv")
+test_data <- read.csv("../test_final.csv")
+```
+
+9. Seleccione ahora el SalesPrice como variable respuesta.
+```{r selection, echo=FALSE}
+seleccionar_numericas <- function(data) {
+  # Identificar columnas numéricas
+  numericas <- sapply(data, is.numeric)
+  # Filtrar y eliminar columnas no numéricas
+  data_numericas <- data[, numericas]
+  # Eliminar columnas con muchos NA 
+  data_numericas <- data_numericas[, colSums(is.na(data_numericas)) < nrow(data_numericas) * 0.5]
+  return(data_numericas)
+}
+
+# Aplicar a train y test
+train_numericas <- seleccionar_numericas(train_data)
+test_numericas <- seleccionar_numericas(test_data)
+
+# Verificar las variables seleccionadas
+names(train_numericas)
+names(test_numericas)
+
+```
+
+
+
+```{r data_processing, echo=FALSE}
+
+# valores na
+preproc <- preProcess(train_numericas, method = c("medianImpute", "center", "scale"))
+train_processed <- predict(preproc, train_numericas)
+test_processed <- predict(preproc, test_numericas)
+
+# revisar que no hayan na
+sum(is.na(train_processed))
+sum(is.na(test_processed))
+```
+
+10. Genere dos modelos de regresión con redes neuronales con diferentes topologías y
+funciones de activación para predecir el precio de las casas.
+
+```{r rna_model1, echo=FALSE}
+# Fórmula: todas las variables numéricas excepto "Id" para predecir "SalePrice"
+formula <- as.formula(paste("SalePrice ~", 
+                           paste(names(train_processed)[!names(train_processed) %in% c("Id", "SalePrice")], 
+                           collapse = " + ")))
+
+# Entrenar
+set.seed(123)
+modelo <- neuralnet(
+  formula,
+  data = train_processed,
+  hidden = c(5, 3),  # Dos capas ocultas con 5 y 3 neuronas
+  linear.output = TRUE,  # Para regresión
+  act.fct = "logistic",  # Función de activación
+  threshold = 0.1  # Umbral de convergencia
+)
+
+# Graficar la red
+plot(modelo)
+
+```
+
+```{r rna_model1_eval, echo=FALSE}
+# Predecir en test_processed (asegúrate de que no tenga "SalePrice")
+test_processed_data <- select(test_processed, -c("SalePrice"))
+predicciones_test <- predict(modelo, test_processed_data)
+
+# Calcular métricas (RMSE y R²)
+rmse <- sqrt(mean((predicciones_test - test_processed$SalePrice)^2))
+r2 <- cor(predicciones_test, test_processed$SalePrice)^2
+
+cat("RMSE:", rmse, "\nR²:", r2)
+
+#Obtener los parámetros de normalización de SalePrice
+media_saleprice <- mean(train_data$SalePrice)
+sd_saleprice <- sd(train_data$SalePrice)
+
+# Desnormalizar las predicciones y los valores reales
+predicciones_dolares <- predicciones_test * sd_saleprice + media_saleprice
+real_dolares <- test_processed$SalePrice * sd_saleprice + media_saleprice
+
+#Calcular RMSE en dólares
+rmse_dolares <- sqrt(mean((predicciones_dolares - real_dolares)^2))
+cat("\nRMSE en dólares:", rmse_dolares)
+
+```
+
+El modelo que implementamos utiliza una red neuronal con dos capas ocultas. Tiene 5 neuronas en la primera capa y 3 en la segunda. Esta configurada para regresión para poder predecir sobre el precio de las casas y elegimos la función de activación logística porque, aunque es común en clasificación, también puede funcionar en regresión cuando los datos están normalizados. Con el parámetro linear.output = TRUE asegure la naturaleza lineal de la predicción, algo muy imoprtant para hacer modelos de regresión. utilizando redes.  Además, colocamos un umbral de convergencia de 0.1 para detener el entrenamiento si la reducción del error es mínim. Esto es importante también ya que puede ayudarnos a reducir sobreajuste.
+
+Los resultados muestran un R² de 0.793. Esto quiere decir que el modeloexplica casi el 80% de la variabilidad en los precios. Esto es un desempeño considerado bueno para el primer intento. Sin embargo, el RMSE en dólares de casi 39k dólares, indica que hay una desviación considerable del valor real. Si bien esto es mejor que un modelo aleatorio, sigue siendo un margen alto para decisiones financieras críticas. No obstante, es importante menconar que este número puede ser considerado válido, dada la gran variedad de datos y precios distintos en el set de datos. En comparación con otros enfoques, como regresión lineal o árboles de decisión, esta red neuronal captura relaciones no lineales en los datos, pero podría optimizarse aún más.
+
+11. Compare los dos modelos de regresión y determine cuál funcionó mejor para predecir el precio de las casas.
+
+
+12. Analice si no hay sobreajuste en los modelos. Use para esto la curva de aprendizaje.
+
+
+13. Para el modelo elegido de regresión tunee los parámetros y discuta si puede mejorar
+todavía el modelo sin llegar a sobre ajustarlo. 
+
