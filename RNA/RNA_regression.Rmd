@@ -9,6 +9,7 @@ library(caret)
 library(neuralnet)
 library(MASS)
 library(dplyr)
+library(ggplot2)
 ```
 
 ```{r load_data, echo=FALSE}
@@ -169,11 +170,124 @@ Habiendo terminado estos 2 modelos se puede ver que el segundo tuvo un mejor des
 
 En el segundo modelo, redujimos la segunda capa a solo 2 neuronas y cambiamos la función de activación a tangente hiperbólica (tanh). Con estos ajustes, junto con un umbral de convergencia más estricto de 0.05, se obtuvieron resultados más precisos. Ya que ahora se tiene un R² de 0.845, casi un 5% más alto que el primer modelo. También, un RMSE de 31k dólares. Esto significa que, en promedio, las predicciones ahora se acercan más a los valores reales. La desviación es casi 7k dólares menos que antes.
 
-Al final, el segundo modelo no solo explica mejor cómo varían los precios de las casas, sino que también comete errores más pequeños en sus estimaciones. Los cambios que introdujimos, especialmente el uso de tanh y una arquitectura ligeramente más ajustada, ayudaron a capturar mejor las relaciones en los datos sin la necesidad de aumentar la complejidad de la red neuronal, pudiendo haber agregado mas neuronas o repeticiones en el entrenamiento.
+Al final, el segundo modelo no solo explica mejor cómo varían los precios de las casas, sino que también comete errores más pequeños en sus estimaciones. Los cambios que introdujimos, especialmente el uso de tanh y una arquitectura ligeramente más ajustada, ayudaron a capturar mejor las relaciones en los datos sin la necesidad de aumentar la complejidad de la red neuronal, pudiendo haber agregado mas neuronas o repeticiones en el entrenamiento. Ahora lo que nos queda ver es si con estos modelos, debido a las mejoras, no se llego a alcanzar algún tipo de sobre ajuste por la mejora del rendimiento. 
 
 12. Analice si no hay sobreajuste en los modelos. Use para esto la curva de aprendizaje.
+
+```{r overfit_analisis_model1, echo=FALSE}
+set.seed(123)
+train_sizes <- seq(0.1, 1.0, by = 0.1)
+
+train_rmse <- numeric(length(train_sizes))
+test_rmse <- numeric(length(train_sizes))
+
+for(i in seq_along(train_sizes)) {
+  pct <- train_sizes[i]
+  n_subset <- floor(pct * nrow(train_processed))
+  subset_idx <- sample(1:nrow(train_processed), size = n_subset)
+  
+  # Entrenar el modelo con el subset
+  modelo_subset <- neuralnet(
+    formula,
+    data = train_processed[subset_idx, ],
+    hidden = c(5, 3),
+    linear.output = TRUE,
+    act.fct = "logistic",
+    threshold = 0.1
+  )
+  
+  # Predecir en el conjunto de entrenamiento (subset)
+  train_pred <- predict(modelo_subset, train_processed[subset_idx, ])
+  train_rmse[i] <- sqrt(mean((train_pred - train_processed$SalePrice[subset_idx])^2))
+  
+  # Predecir en el conjunto de prueba (test_processed)
+  test_pred <- predict(modelo_subset, select(test_processed, -SalePrice))
+  test_rmse[i] <- sqrt(mean((test_pred - test_processed$SalePrice)^2))
+}
+
+learning_data <- data.frame(
+  TrainingSize = train_sizes * 100,
+  TrainRMSE = train_rmse,
+  TestRMSE = test_rmse
+)
+
+ggplot(learning_data, aes(x = TrainingSize)) +
+  geom_line(aes(y = TrainRMSE, color = "Entrenamiento"), size = 1) +
+  geom_line(aes(y = TestRMSE, color = "Prueba"), size = 1) +
+  labs(title = "Curvas de Aprendizaje - Red Neuronal",
+       x = "Porcentaje de Datos de Entrenamiento",
+       y = "RMSE",
+       color = "Conjunto") +
+  scale_color_manual(values = c("Entrenamiento" = "blue", "Prueba" = "red")) +
+  theme_minimal()
+
+```
+
+En este primer modelo podemos ver que tanto el learning del entrenamiento como el de prueba van cambiando con respecto al porcentaje de datos. En el caso de los datos de prueba podemos ver que ha medida que pasa el tiempo se va disminuyendo el rmse. En el caso del entrenamiento el rmse va ligeramente en aumento. Esto no implica que el modelo esté empeorando, como son los datos de prueba, esto quiere decir que el modelo va generalizando la información y por ende aumenta el rmse, si se mantuviera siempre baja significaría que hay sobreajuste y el error se mantuvo bajo todo el tiempo. Algo interesante es que a pesar de que ambas gráficas parecía que llegarían a juntarse, al acercarse al 100% de los datos, volvieron a separarse. Esta gráfica es un poco dificil de intrepretar ya que los leearning rates variaron un poco. Al final el modelo parece que si generaliza bien hasta cierto punto, pero el echo que la distancia entre ambos se agrandó al final, puede dar indicios de sobreajuste. Puede que no sea tanto, pero si puede que haya un poco en el modelo. 
+
+
+```{r overfit_analisis_model1, echo=FALSE}
+set.seed(123)  
+train_sizes_modelo2 <- seq(0.1, 1.0, by = 0.1)  
+train_rmse_modelo2 <- numeric(length(train_sizes_modelo2))
+test_rmse_modelo2 <- numeric(length(train_sizes_modelo2))
+
+for (i in seq_along(train_sizes_modelo2)) {
+  pct_modelo2 <- train_sizes_modelo2[i]
+  n_subset_modelo2 <- floor(pct_modelo2 * nrow(train_processed))
+  subset_idx_modelo2 <- sample(1:nrow(train_processed), size = n_subset_modelo2)
+  
+  modelo2_subset <- neuralnet(
+    formula,
+    data = train_processed[subset_idx_modelo2, ],
+    hidden = c(5, 2),
+    linear.output = TRUE,
+    act.fct = "tanh",
+    threshold = 0.05
+  )
+  
+  # Solo si el modelo tiene pesos (checa si convergió)
+  if (!is.null(modelo2_subset$result.matrix)) {
+    train_pred_modelo2 <- predict(modelo2_subset, train_processed[subset_idx_modelo2, ])
+    train_rmse_modelo2[i] <- sqrt(mean((train_pred_modelo2 - train_processed$SalePrice[subset_idx_modelo2])^2))
+    
+    test_pred_modelo2 <- predict(modelo2_subset, select(test_processed, -SalePrice))
+    test_rmse_modelo2[i] <- sqrt(mean((test_pred_modelo2 - test_processed$SalePrice)^2))
+  } else {
+    # Si no converge, asigna NA o un valor alto para marcarlo
+    train_rmse_modelo2[i] <- NA
+    test_rmse_modelo2[i] <- NA
+    cat("Modelo no convergió para porcentaje:", pct_modelo2 * 100, "%\n")
+  }
+}
+
+# Crear dataframe para graficar
+learning_data_modelo2 <- data.frame(
+  TrainingSize = train_sizes_modelo2 * 100,
+  TrainRMSE = train_rmse_modelo2,
+  TestRMSE = test_rmse_modelo2
+)
+
+ggplot(learning_data_modelo2, aes(x = TrainingSize)) +
+  geom_line(aes(y = TrainRMSE, color = "Entrenamiento (Modelo 2)"), size = 1) +
+  geom_line(aes(y = TestRMSE, color = "Prueba (Modelo 2)"), size = 1) +
+  labs(
+    title = "Curvas de Aprendizaje - Modelo 2 (2 capas, tanh)",
+    x = "Porcentaje de Datos de Entrenamiento",
+    y = "RMSE",
+    color = "Conjunto"
+  ) +
+  scale_color_manual(values = c("Entrenamiento (Modelo 2)" = "darkblue", "Prueba (Modelo 2)" = "darkred")) +
+  theme_minimal()
+
+```
+
+Ahora en el modelo 2, donde se fue más estricto con las metricas se obtuvieron mejores resultados, pero al momento de hacer la gráfica para el learning rate, hubieron algunos problemas.Específicamente al llegar al 50% de los datos y al 100% de los datos el modelo no convergio. Creemos que esto pasó porque la red neuronal en algún punto, con algunos porcentajes en específico, no era capaz de converger al ser muy estricto. Lo interesante es que ese error nunca ocurrió cuando se entrenó el modelo sin ver el learning rate.
+
+Viendo la gráfica se puede ver que ambos modelos llegan a juntarse bastante al final, lo cuál en general es un muy buen indicio. Pero el problema es que si observamos bien la linea azul, el modelo casi nunca empeoró o aumento su rmse. La linea de entrenamiento, aunque bien se redujo considerablemente a lo largo de la gráfica, la linea azul se mantuve en el mismo rmse casi todo el tiempo. Esto es un indicador claro de sobre ajuste. Aunque la distancia entre el desempeño entre ambos sea reducida, hay sobreajuste ya que con los datos de entrenamiento, no aumentó el rmse, osea que seguraemnte el modelo tendrá problemas para generalizar y predecir con datos que no conozca. Además el hecho que no converga con algunos porcentajes puede que genere problemas con sets de datos específicos.
 
 
 13. Para el modelo elegido de regresión tunee los parámetros y discuta si puede mejorar
 todavía el modelo sin llegar a sobre ajustarlo. 
+
 
