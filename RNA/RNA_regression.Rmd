@@ -165,7 +165,11 @@ Si bien sigue siendo un margen de error considerable hay que nuevamente tener en
 
 11. Compare los dos modelos de regresión y determine cuál funcionó mejor para predecir el precio de las casas.
 
+Habiendo terminado estos 2 modelos se puede ver que el segundo tuvo un mejor desempeño en todas las métricas clave. El primer modelo con 5 neuronas en la primera capa y 3 en la segunda, junto con la función de activación logística, logró un R² de 0.793. Habíamos dicho que ya era un resultado decente, ya que el modelo explica cerca del 80% de la variabilidad en los precios. Sin embargo, su RMSE en dólares de aproximadamente 38,700 indicaba que en promedio, las predicciones se desviaban del valor real. Este es un margen de error que dejó campo para poder introducir mejoras. Dichas mejoras fueron encontradas, por medio de un tuning manual, probando distintas configuraciones y también cambiando la función de activación.
 
+En el segundo modelo, redujimos la segunda capa a solo 2 neuronas y cambiamos la función de activación a tangente hiperbólica (tanh). Con estos ajustes, junto con un umbral de convergencia más estricto de 0.05, se obtuvieron resultados más precisos. Ya que ahora se tiene un R² de 0.845, casi un 5% más alto que el primer modelo. También, un RMSE de 31k dólares. Esto significa que, en promedio, las predicciones ahora se acercan más a los valores reales. La desviación es casi 7k dólares menos que antes.
+
+Al final, el segundo modelo no solo explica mejor cómo varían los precios de las casas, sino que también comete errores más pequeños en sus estimaciones. Los cambios que introdujimos, especialmente el uso de tanh y una arquitectura ligeramente más ajustada, ayudaron a capturar mejor las relaciones en los datos sin la necesidad de aumentar la complejidad de la red neuronal, pudiendo haber agregado mas neuronas o repeticiones en el entrenamiento.
 
 12. Analice si no hay sobreajuste en los modelos. Use para esto la curva de aprendizaje.
 
