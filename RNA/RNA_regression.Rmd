@@ -131,7 +131,7 @@ plot(modelo2)
 
 ```
 
-```{r rna_model1_eval, echo=FALSE}
+```{r rna_model2_eval, echo=FALSE}
 # Predecir en test_processed (asegúrate de que no tenga "SalePrice")
 test_processed_data <- select(test_processed, -c("SalePrice"))
 predicciones_test <- predict(modelo2, test_processed_data)
@@ -226,7 +226,7 @@ ggplot(learning_data, aes(x = TrainingSize)) +
 En este primer modelo podemos ver que tanto el learning del entrenamiento como el de prueba van cambiando con respecto al porcentaje de datos. En el caso de los datos de prueba podemos ver que ha medida que pasa el tiempo se va disminuyendo el rmse. En el caso del entrenamiento el rmse va ligeramente en aumento. Esto no implica que el modelo esté empeorando, como son los datos de prueba, esto quiere decir que el modelo va generalizando la información y por ende aumenta el rmse, si se mantuviera siempre baja significaría que hay sobreajuste y el error se mantuvo bajo todo el tiempo. Algo interesante es que a pesar de que ambas gráficas parecía que llegarían a juntarse, al acercarse al 100% de los datos, volvieron a separarse. Esta gráfica es un poco dificil de intrepretar ya que los leearning rates variaron un poco. Al final el modelo parece que si generaliza bien hasta cierto punto, pero el echo que la distancia entre ambos se agrandó al final, puede dar indicios de sobreajuste. Puede que no sea tanto, pero si puede que haya un poco en el modelo. 
 
 
-```{r overfit_analisis_model1, echo=FALSE}
+```{r overfit_analisis_model2, echo=FALSE}
 set.seed(123)  
 train_sizes_modelo2 <- seq(0.1, 1.0, by = 0.1)  
 train_rmse_modelo2 <- numeric(length(train_sizes_modelo2))
@@ -290,4 +290,68 @@ Viendo la gráfica se puede ver que ambos modelos llegan a juntarse bastante al 
 13. Para el modelo elegido de regresión tunee los parámetros y discuta si puede mejorar
 todavía el modelo sin llegar a sobre ajustarlo. 
 
+Ya que vimos que hay cierto sobreajuste en ambos modelos es importante ahora hacer tuning para mantener un buen rendimiento, pero sin caer en sobreajuste.
 
+```{r tunin_final_model1, echo=FALSE}
+
+set.seed(123)
+modelo3 <- neuralnet(
+  formula,
+  data = train_processed,
+  hidden = c(4, 3),
+  linear.output = TRUE,
+  act.fct = "tanh",
+  threshold = 0.5,
+  stepmax = 5e5,
+  rep = 2,
+  lifesign = "full",
+  lifesign.step = 1000,
+  algorithm = "rprop+"
+)
+
+# Verificación de convergencia
+if(is.null(modelo3$result.matrix)) {
+  stop("El modelo no convergió. Prueba aumentar stepmax o reducir threshold")
+}
+
+plot(modelo3)
+
+# Predicciones
+pred_train <- predict(modelo3, train_processed)
+pred_test <- predict(modelo3, select(test_processed, -SalePrice))
+
+# Métricas en escala normalizada
+rmse_train_norm <- sqrt(mean((pred_train - train_processed$SalePrice)^2))
+rmse_test_norm <- sqrt(mean((pred_test - test_processed$SalePrice)^2))
+r2 <- cor(pred_test, test_processed$SalePrice)^2
+
+# Obtenemos parámetros de normalización originales 
+media_saleprice <- mean(train_data$SalePrice) 
+sd_saleprice <- sd(train_data$SalePrice)
+
+# Desnormalización de predicciones
+pred_train_dolares <- pred_train * sd_saleprice + media_saleprice
+pred_test_dolares <- pred_test * sd_saleprice + media_saleprice
+real_train_dolares <- train_processed$SalePrice * sd_saleprice + media_saleprice
+real_test_dolares <- test_processed$SalePrice * sd_saleprice + media_saleprice
+
+# Métricas en dólares
+rmse_train_dolares <- sqrt(mean((pred_train_dolares - real_train_dolares)^2))
+rmse_test_dolares <- sqrt(mean((pred_test_dolares - real_test_dolares)^2))
+
+# Resultados completos
+cat("=== Métricas en escala normalizada ===\n")
+cat("RMSE Train:", rmse_train_norm, "\nRMSE Test:", rmse_test_norm, "\nR²:", r2)
+
+cat("\n\n=== Métricas en dólares originales ===\n")
+cat("RMSE Train: $", format(rmse_train_dolares, big.mark = ",", digits = 2),
+    "\nRMSE Test: $", format(rmse_test_dolares, big.mark = ",", digits = 2))
+
+
+```
+
+El proceso de ajuste del modelo ha sido bastante interesante y los resultados muestran que el tuneo realizado fu exitoso. Algo importante a mencionar es que este tuneo fue manual, tuvimos que agregar parametros nuevos e ir probando distintas combinaciones hasta que se redijera el sobreajuste sin afectar negavitamente el desempeño. Comenzamos con una arquitectura inicial de dos capas ocultas, pero fuimos refinando poco a poco la cantidad de neuronas, hasta llegar a la cantidad de 4 neuronas en la primera capa y 3 en la segunda. Esta configuración resultó ser un buen equilibrio, ya que permite capturar patrones complejos en los datos sin caer en sobreajuste.
+
+Uno de los cambios más importantes fue ajustar el threshold a 0.5. Este valor es más alto que el que usamos al principio en los modelos. Esto hizo que el entrenamiento se detuviera antes, evitando que el modelo se ajustara demasiado a los datos de entrenamiento. Además, el algoritmo rprop+ ayudó a optimizar los pesos de la red de manera eficiente. La función de activación tanh se mantuvo y aque dio buenos resultados antes. Esto, combinado con un stepmax lo suficientemente alto, aseguró que el modelo tuviera tiempo suficiente para aprender sin quedarse atascado.
+
+Los resultados finales son muy buenos. Un R² de 0.896 indica que el modelo explica la gran mayoría de la variabilidad en los precios. Llegando casi a un 90% y lo más importante es que el RMSE en entrenamiento y prueba son casi idénticos. Ambos están alrededor de 26k dólares. Esto confirma que el modelo generaliza bien y no está memorizando los datos. Entonces nuestro tuning manual basado en prueba y error controlado, ha dado como resultado un modelo confiable y bien balanceado.
