@@ -107,7 +107,64 @@ El modelo que implementamos utiliza una red neuronal con dos capas ocultas. Tien
 
 Los resultados muestran un R² de 0.793. Esto quiere decir que el modeloexplica casi el 80% de la variabilidad en los precios. Esto es un desempeño considerado bueno para el primer intento. Sin embargo, el RMSE en dólares de casi 39k dólares, indica que hay una desviación considerable del valor real. Si bien esto es mejor que un modelo aleatorio, sigue siendo un margen alto para decisiones financieras críticas. No obstante, es importante menconar que este número puede ser considerado válido, dada la gran variedad de datos y precios distintos en el set de datos. En comparación con otros enfoques, como regresión lineal o árboles de decisión, esta red neuronal captura relaciones no lineales en los datos, pero podría optimizarse aún más.
 
+```{r rna_model2, echo=FALSE}
+# Fórmula: todas las variables numéricas excepto "Id" para predecir "SalePrice"
+formula <- as.formula(paste("SalePrice ~", 
+                           paste(names(train_processed)[!names(train_processed) %in% c("Id", "SalePrice")], 
+                           collapse = " + ")))
+
+# Entrenar
+# Modelo 2 tunin manual :o
+set.seed(123)
+modelo2 <- neuralnet(
+  formula,
+  data = train_processed,
+  hidden = c(5, 2),       # cambio en las neuronas
+  linear.output = TRUE,
+  act.fct = "tanh",       # otra act func
+  threshold = 0.05,       # mas estricto
+)
+
+# Graficar la red
+plot(modelo2)
+
+```
+
+```{r rna_model1_eval, echo=FALSE}
+# Predecir en test_processed (asegúrate de que no tenga "SalePrice")
+test_processed_data <- select(test_processed, -c("SalePrice"))
+predicciones_test <- predict(modelo2, test_processed_data)
+
+# Calcular métricas (RMSE y R²)
+rmse <- sqrt(mean((predicciones_test - test_processed$SalePrice)^2))
+r2 <- cor(predicciones_test, test_processed$SalePrice)^2
+
+cat("RMSE:", rmse, "\nR²:", r2)
+
+#Obtener los parámetros de normalización de SalePrice
+media_saleprice <- mean(train_data$SalePrice)
+sd_saleprice <- sd(train_data$SalePrice)
+
+# Desnormalizar las predicciones y los valores reales
+predicciones_dolares <- predicciones_test * sd_saleprice + media_saleprice
+real_dolares <- test_processed$SalePrice * sd_saleprice + media_saleprice
+
+#Calcular RMSE en dólares
+rmse_dolares <- sqrt(mean((predicciones_dolares - real_dolares)^2))
+cat("\nRMSE en dólares:", rmse_dolares)
+
+```
+
+El modelo que implementamos en esta segunda versión sigue utilizando una red neuronal con dos capas ocultas, pero ahora con 5 neuronas en la primera capa y 2 en la segunda, una configuración ligeramente más compacta que la anterior. Optamos por la función de activación tangente hiperbólica, tanh, que, a diferencia de la logística usada antes, trabaja mejor con datos normalizados al tener un rango de salida entre -1 y 1. Esto puede ayudar a que el aprendizaje sea más eficiente, especialmente cuando los datos tienen una distribución simétrica alrededor de cero.
+
+Mantuvimos linear.output = TRUE para asegurar que la salida del modelo fuera lineal, ya que la variable respuest es continua. Además, redujimos el umbral de convergencia a 0.05, lo que hace que el entrenamiento sea más exigente, deteniéndose solo cuando los ajustes en los pesos de la red sean mínimos. Este cambio busca reducir el rmse prácticamente. 
+
+Los resultados obtenidos son interesantes. El R² de 0.844 nos indica que el modelo explica aproximadamente el 84.5% de la variabilidad en los precios, una mejora bastante buena. Esto sugiere que los cambios en la arquitectura y la función de activación están capturando mejor las relaciones en los datos aunque estemso usando menos neouronas. El RMSE en dólares se redujo a alrededor de 31,466, lo que significa que, en promedio, las predicciones se desvían en poco más de 31k dólares del valor real.
+
+Si bien sigue siendo un margen de error considerable hay que nuevamente tener en cuenta que los precios de las casas pueden variar bastante. Un error de esta magnitud puede ser aceptable dependiendo de la situación y el resultado ya está en un rango bastante menor que el modelo anterior.
+
 11. Compare los dos modelos de regresión y determine cuál funcionó mejor para predecir el precio de las casas.
+
 
 
 12. Analice si no hay sobreajuste en los modelos. Use para esto la curva de aprendizaje.
